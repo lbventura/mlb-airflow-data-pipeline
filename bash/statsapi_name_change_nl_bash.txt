@@ -1,0 +1,2 @@
+#!/bin/sh
+mv -f /root/mlb-airflow-data-pipeline/statsapi_reporting_notebook.html /root/mlb-airflow-data-pipeline/report/$(date +"%Y_%m_%d")_statsapi_reporting_notebook_nl.html

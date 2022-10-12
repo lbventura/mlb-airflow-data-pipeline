@@ -1,0 +1,16 @@
+,name,div_rank,w,l,gb,wc_rank,wc_gb,wc_elim_num,elim_num,team_id,league_rank,sport_rank
+0,Los Angeles Dodgers,1,92,41,-,-,-,-,-,119,1,1
+1,San Diego Padres,2,74,61,19.0,2,+0.5,-,10,135,5,5
+2,San Francisco Giants,3,64,68,27.5,5,8.0,22,3,137,8,8
+3,Arizona Diamondbacks,4,64,69,28.0,6,8.5,21,2,109,9,9
+4,Colorado Rockies,5,57,78,36.0,7,16.5,12,E,115,10,10
+0,New York Mets,1,85,50,-,-,-,-,-,121,2,2
+1,Atlanta Braves,2,84,51,1.0,1,+10.5,-,27,144,3,3
+2,Philadelphia Phillies,3,73,61,11.5,3,-,-,17,143,6,6
+3,Miami Marlins,4,55,78,29.0,9,17.5,12,E,146,12,12
+4,Washington Nationals,5,47,87,37.5,12,26.0,3,E,120,15,15
+0,St. Louis Cardinals,1,79,55,-,-,-,-,-,138,4,4
+1,Milwaukee Brewers,2,70,63,8.5,4,2.5,27,21,158,7,7
+2,Chicago Cubs,3,56,78,23.0,8,17.0,12,6,112,11,11
+3,Cincinnati Reds,4,53,79,25.0,10,19.0,11,5,113,13,13
+4,Pittsburgh Pirates,5,49,84,29.5,11,23.5,6,E,134,14,14

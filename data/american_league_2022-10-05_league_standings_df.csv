@@ -1,0 +1,16 @@
+,name,div_rank,w,l,gb,wc_rank,wc_gb,wc_elim_num,elim_num,team_id,league_rank,sport_rank
+0,Houston Astros,1,105,56,-,-,-,-,-,117,1,1
+1,Seattle Mariners,2,89,72,16.0,2,+3.0,-,E,136,5,5
+2,Los Angeles Angels,3,73,88,32.0,8,13.0,E,E,108,11,11
+3,Texas Rangers,4,67,94,38.0,9,19.0,E,E,140,12,12
+4,Oakland Athletics,5,59,102,46.0,12,27.0,E,E,133,15,15
+0,New York Yankees,1,99,62,-,-,-,-,-,147,2,2
+1,Toronto Blue Jays,2,91,69,7.5,1,+5.5,-,E,141,3,3
+2,Tampa Bay Rays,3,86,75,13.0,3,-,-,E,139,6,6
+3,Baltimore Orioles,4,82,78,16.5,4,3.5,E,E,110,7,7
+4,Boston Red Sox,5,77,84,22.0,6,9.0,E,E,111,9,9
+0,Cleveland Guardians,1,91,70,-,-,-,-,-,114,4,4
+1,Chicago White Sox,2,81,80,10.0,5,5.0,E,E,145,8,8
+2,Minnesota Twins,3,77,84,14.0,7,9.0,E,E,142,10,10
+3,Detroit Tigers,4,66,95,25.0,10,20.0,E,E,116,13,13
+4,Kansas City Royals,5,65,96,26.0,11,21.0,E,E,118,14,14
