@@ -152,7 +152,7 @@ def get_player_stats_dataframe_per_team(
     return team_player_stats, unactive_player_dict
 
 
-def get_player_stats_per_league():
+def get_player_stats_per_league() -> tuple[pd.DataFrame, dict, list]:
     """
     Returns player individual stats per league.
 
