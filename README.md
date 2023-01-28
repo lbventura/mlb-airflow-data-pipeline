@@ -27,9 +27,14 @@ And of the following files:
     * `get_league_team_rosters_player_names`;
     * `get_player_stats_dataframe_per_team`;
     * `get_player_stats_per_league`;
+
 and stores the player and team statistics in `.csv` files.
 2. `statsapi_treatment_script.py`, which reads the full player stats data file created in `statsapi_extraction_script.py` and generates a batter-specific stats data file with extra features;
 3. `statsapi_analysis_script.py`, which reads the treated data from `statsapi_treatment_script.py` and creates several scatter plots to be used in the report;
 4. `statsapi_time_series_creation_analysis_script.py`. This reads the all the batter data saved in `data` and generates time-series charts for several features;
 5. `statsapi_reporting_notebook.ipynb`, which creates an automated HTML report, stored in `report`;
 6. `statsapi_parameters_script.py`, which contains the relevant parameters for the execution of the data pipeline.
+
+## Important note
+
+If you are attempting to run this in the off-season, the execution of the `statsapi_treatment_script.py` will fail with an obscure `Key Error: 200`, which results from returning an empty json from `statsapi.standings_data`. To avoid this, just set the parameter `season` to the last valid value. At the time of writing (28-01-2023), this would be `statsapi.standings_data(league, season=2022)`.
