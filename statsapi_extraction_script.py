@@ -15,7 +15,7 @@ from statsapi_parameters_script import (
 
 # creates a logger
 logging.basicConfig(
-    filename="mlb-airflow-error.log", encoding="utf-8", level=logging.DEBUG
+    filename="mlb-airflow-debugger.log", encoding="utf-8", level=logging.DEBUG
 )
 
 
@@ -119,16 +119,16 @@ def get_player_stats_dataframe_per_team(
 
     team_stats_json = {}
     corrected_team_name_ids = {}
-    unactive_player_dict = (
+    inactive_player_dict = (
         {}
-    )  # this is a dict of playername, playerid for unactive players
+    )  # this is a dict of playername, playerid for inactive players
 
     for name, id in team_name_ids.items():
         try:
             team_stats_json[name] = statsapi.player_stats(id).split("\n")
             corrected_team_name_ids[name] = id
         except TypeError:
-            unactive_player_dict[name] = id
+            inactive_player_dict[name] = id
 
     team_player_stats = pd.DataFrame(
         {
@@ -149,7 +149,7 @@ def get_player_stats_dataframe_per_team(
     col = team_player_stats.pop("playername")
     team_player_stats.insert(0, col.name, col)
 
-    return team_player_stats, unactive_player_dict
+    return team_player_stats, inactive_player_dict
 
 
 def get_player_stats_per_league() -> tuple[pd.DataFrame, dict, list]:
