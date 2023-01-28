@@ -5,7 +5,7 @@ A data pipeline which allows for automatic, fast and reliable extraction, manipu
 3. Summarizing results in an automatically-generated HTML report with a relevant description, tables and charts.
 
 To achieve this, the following tools will be used, with Python as the programming language:
-    
+
 1. The package [`statsapi`](https://github.com/toddrob99/MLB-StatsAPI), which writes HTTP requests to the MLB API. This simplifies data collection and allows us to focus on extracting the data from these requests and treating it;
 2. Pandas for creating data tables and generating new features;
 3. Matplotlib for representing the results;
