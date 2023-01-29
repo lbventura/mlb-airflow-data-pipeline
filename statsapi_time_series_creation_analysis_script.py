@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import uuid
 
+from typing import Dict
 from datetime import datetime
 from matplotlib.ticker import MaxNLocator
 
@@ -70,7 +71,9 @@ def creating_time_series(
 
     league_dataset_dict = {}
 
-    time_series_data_dict = {stat: [] for stat in TIME_SERIES_VARIABLES_LIST}
+    time_series_data_dict: Dict[str, list] = {
+        stat: [] for stat in TIME_SERIES_VARIABLES_LIST
+    }
 
     for file in filenames:
 
