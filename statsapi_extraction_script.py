@@ -15,7 +15,11 @@ from statsapi_parameters_script import (
 
 # creates a logger
 logging.basicConfig(
-    filename="mlb-airflow-debugger.log", encoding="utf-8", level=logging.DEBUG
+    filename="mlb-airflow-debugger.log",
+    format="%(asctime)s: %(levelname)s: %(message)s",
+    encoding="utf-8",
+    level=logging.DEBUG,
+    filemode="w",
 )
 
 
@@ -185,29 +189,36 @@ def get_player_stats_per_league() -> tuple[pd.DataFrame, dict, list]:
     )
 
 
-(
-    league_player_team_stats_df,
-    inactive_players_per_team,
-    failed_teams_list,
-) = get_player_stats_per_league()
+if __name__ == "__main__":
 
-# save full player stats
-league_player_team_stats_df.to_csv(DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME)
+    logging.info("Data extraction started")
 
-# save inactive players and failed teams json
-if len(inactive_players_per_team) != 0:
-    with open(
-        DATA_FILE_LOCATION
-        + f"{DATE_TIME_EXECUTION}_{LEAGUE_NAME}_inactive_players.json",
-        "w",
-    ) as fp:
-        inactive_players_per_team_json = json.dumps(inactive_players_per_team)
-        json.dump(inactive_players_per_team, fp)
+    (
+        league_player_team_stats_df,
+        inactive_players_per_team,
+        failed_teams_list,
+    ) = get_player_stats_per_league()
 
-if len(failed_teams_list) != 0:
-    with open(
-        DATA_FILE_LOCATION + f"{DATE_TIME_EXECUTION}_{LEAGUE_NAME}_failed_teams.json",
-        "w",
-    ) as fp:
-        failed_teams_list_json = json.dumps(failed_teams_list)
-        json.dump(failed_teams_list_json, fp)
+    # save full player stats
+    league_player_team_stats_df.to_csv(DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME)
+
+    # save inactive players and failed teams json
+    if len(inactive_players_per_team) != 0:
+        with open(
+            DATA_FILE_LOCATION
+            + f"{DATE_TIME_EXECUTION}_{LEAGUE_NAME}_inactive_players.json",
+            "w",
+        ) as fp:
+            inactive_players_per_team_json = json.dumps(inactive_players_per_team)
+            json.dump(inactive_players_per_team, fp)
+
+    if len(failed_teams_list) != 0:
+        with open(
+            DATA_FILE_LOCATION
+            + f"{DATE_TIME_EXECUTION}_{LEAGUE_NAME}_failed_teams.json",
+            "w",
+        ) as fp:
+            failed_teams_list_json = json.dumps(failed_teams_list)
+            json.dump(failed_teams_list_json, fp)
+
+    logging.info("Data extraction finished")
