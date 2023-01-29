@@ -3,6 +3,8 @@ import pandas as pd
 import statsapi
 import logging
 
+from typing import Any, Dict
+
 from statsapi_parameters_script import (
     DATE_TIME_EXECUTION,
     DATA_FILE_LOCATION,
@@ -32,7 +34,7 @@ def get_league_division_standings() -> tuple[dict, dict]:
     dict: Division standings
     """
     league_standings_dict = {}
-    division_standings_dict = {}
+    division_standings_dict: Dict[Any, Any] = {}
 
     for league in LEAGUE_DIVISION_MAPPING.keys():
 
@@ -40,7 +42,7 @@ def get_league_division_standings() -> tuple[dict, dict]:
         division_standings_dict[LEAGUE_MAPPING[league]] = {}
 
         for division in LEAGUE_DIVISION_MAPPING[league]:
-            division_results = pd.DataFrame(
+            division_results: pd.DataFrame = pd.DataFrame(
                 statsapi.standings_data(league)[division]["teams"]  # type: ignore
             )
             league_list.append(division_results)
