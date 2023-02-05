@@ -43,7 +43,7 @@ def get_league_division_standings() -> tuple[dict, dict]:
 
         for division in LEAGUE_DIVISION_MAPPING[league]:
             division_results: pd.DataFrame = pd.DataFrame(
-                statsapi.standings_data(league)[division]["teams"]  # type: ignore
+                statsapi.standings_data(league, season=2022)[division]["teams"]  # type: ignore
             )
             league_list.append(division_results)
             division_standings_dict[LEAGUE_MAPPING[league]][division] = division_results
@@ -88,19 +88,9 @@ def get_league_team_rosters_player_names(
     )
 
 
-(
-    league_standings_dict,
-    division_standings_dict,
-    league_team_rosters_player_names,
-) = get_league_team_rosters_player_names(LEAGUE_NAME)
-
-league_standings_dict[LEAGUE_NAME].to_csv(
-    DATA_FILE_LOCATION + LEAGUE_STANDINGS_FILE_NAME
-)
-
-
 def get_player_stats_dataframe_per_team(
     team_number: int,
+    league_team_rosters_player_names: dict,
 ) -> tuple[pd.DataFrame, dict]:
     """Takes as input a team number and returns a pandas DataFrame
     containing the stats of the active players,
@@ -137,7 +127,7 @@ def get_player_stats_dataframe_per_team(
             inactive_player_dict[name] = id
 
     team_player_stats = pd.DataFrame(
-        {
+        data={
             team_name_ids[player]: {
                 stat.split(": ")[0]: stat.split(": ")[1]
                 for stat in team_stats_json[player]
@@ -158,7 +148,9 @@ def get_player_stats_dataframe_per_team(
     return team_player_stats, inactive_player_dict
 
 
-def get_player_stats_per_league() -> tuple[pd.DataFrame, dict, list]:
+def get_player_stats_per_league(
+    league_team_rosters_player_names: dict,
+) -> tuple[pd.DataFrame, dict, list]:
     """
     Returns player individual stats per league.
 
@@ -173,7 +165,9 @@ def get_player_stats_per_league() -> tuple[pd.DataFrame, dict, list]:
 
     for team_number in league_team_rosters_player_names.keys():
         try:
-            team_info = get_player_stats_dataframe_per_team(team_number)
+            team_info = get_player_stats_dataframe_per_team(
+                team_number, league_team_rosters_player_names
+            )
             league_player_team_stats_dict[team_number] = team_info[0]
             if len(team_info[1]) != 0:
                 inactive_players_per_team[int(team_number)] = team_info[1]
@@ -195,11 +189,24 @@ if __name__ == "__main__":
 
     logging.info("Data extraction started")
 
+    # extract league information
+    (
+        league_standings_dict,
+        division_standings_dict,
+        league_team_rosters_player_names,
+    ) = get_league_team_rosters_player_names(LEAGUE_NAME)
+
+    # save league information
+    league_standings_dict[LEAGUE_NAME].to_csv(
+        DATA_FILE_LOCATION + LEAGUE_STANDINGS_FILE_NAME
+    )
+
+    # extract player information
     (
         league_player_team_stats_df,
         inactive_players_per_team,
         failed_teams_list,
-    ) = get_player_stats_per_league()
+    ) = get_player_stats_per_league(league_team_rosters_player_names)
 
     # save full player stats
     league_player_team_stats_df.to_csv(DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME)

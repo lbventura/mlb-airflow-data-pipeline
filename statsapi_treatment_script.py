@@ -1,4 +1,4 @@
-import warnings
+import logging
 
 import numpy as np
 import pandas as pd
@@ -8,6 +8,15 @@ from statsapi_parameters_script import (
     DATA_FILE_LOCATION,
     DATA_FILTER_THRESHOLD,
     PLAYER_DATA_FILE_NAME,
+)
+
+# creates a logger
+logging.basicConfig(
+    filename="mlb-airflow-debugger-treatment.log",
+    format="%(asctime)s: %(levelname)s: %(message)s",
+    encoding="utf-8",
+    level=logging.DEBUG,
+    filemode="w",
 )
 
 
@@ -30,16 +39,17 @@ def filter_data(input_df: pd.DataFrame, conditions_dict: dict) -> pd.DataFrame:
     return_df = input_df[conditions].copy()
 
     good_data_percentage = len(return_df) / len(input_df)
+    logging.info(f"The percentage of good data is {round(good_data_percentage,3)}")
 
     if good_data_percentage < DATA_FILTER_THRESHOLD:
-        warnings.warn(
-            "There might be a data problem: the percentage of good data is below the threshold"
+        logging.warning(
+            f"There might be a data problem: the percentage of good data, {good_data_percentage}, is below the threshold"
         )
 
-    return return_df  # type: ignore
+    return return_df
 
 
-def plate_appearance_normalizer(
+def create_plate_appearance_normalization(
     input_df: pd.DataFrame, feature_name_list: list
 ) -> pd.DataFrame:
     """Generates a list of features normalized by the number of a player's plate appearances.
@@ -63,7 +73,9 @@ def plate_appearance_normalizer(
     return input_df
 
 
-def mean_normalizer(input_df: pd.DataFrame, feature_name_list: list) -> pd.DataFrame:
+def create_mean_normalization(
+    input_df: pd.DataFrame, feature_name_list: list
+) -> pd.DataFrame:
     """Generates a list of features feature normalized by the league's mean (set to 100).
     This allows for a direct comparison between different players.
 
@@ -87,9 +99,40 @@ def mean_normalizer(input_df: pd.DataFrame, feature_name_list: list) -> pd.DataF
     return input_df
 
 
-# import data
-stats_df = pd.read_csv(DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME, index_col=0)
-print(stats_df.info())
+def create_babip(input_df: pd.DataFrame) -> pd.DataFrame:
+    """Generates the BABIP statistic according to MLB.
+    See https://www.mlb.com/glossary/advanced-stats/babip
+
+    Args:
+        input_df (pd.DataFrame)
+
+    Returns:
+        pd.DataFrame
+    """
+    input_df["babip"] = (input_df["hits"] - input_df["homeRuns"]) / (
+        input_df["atBats"]
+        - input_df["strikeOuts"]
+        - input_df["homeRuns"]
+        + input_df["sacFlies"]
+    )  # following MLB's formula
+
+    return input_df
+
+
+def create_dif_strike_outs_base_on_balls(input_df: pd.DataFrame) -> pd.DataFrame:
+    """Generates the difference between strikeouts
+    and base_on_balls (i.e, walks)
+
+    Args:
+        input_df (pd.DataFrame)
+
+    Returns:
+        pd.DataFrame
+    """
+    input_df["difstrikeOutsbaseOnBalls"] = (
+        input_df["strikeOuts"] - input_df["baseOnBalls"]
+    )
+    return input_df
 
 
 # separate data into batting, pitching and defense
@@ -155,61 +198,58 @@ batting_stats_float_list = [
 ]
 
 # we threw it away, but we should guarantee column types here
-
+# create batting stats list
 batting_stats_list = ["playername"] + batting_stats_int_list + batting_stats_float_list
 
+if __name__ == "__main__":
 
-batting_stats_df = stats_df[batting_stats_list].dropna()
-# drop rows for which there is no playername
+    # import data
+    stats_df = pd.read_csv(DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME, index_col=0)
 
-# filter data
-conditions_dict = {"plateAppearances": 100, "atBats": 50}
+    logging.info("Data treatment started")
 
-batting_stats_df_red = filter_data(batting_stats_df, conditions_dict)
+    # drop rows for which there is no playername
+    batting_stats_df = stats_df[batting_stats_list].dropna()
 
+    # filter data
+    conditions_dict = {"plateAppearances": 100, "atBats": 50}
 
-# generate features
-batting_stats_df_red["babip"] = (
-    batting_stats_df_red["hits"] - batting_stats_df_red["homeRuns"]
-) / (
-    batting_stats_df_red["atBats"]
-    - batting_stats_df_red["strikeOuts"]
-    - batting_stats_df_red["homeRuns"]
-    + batting_stats_df_red["sacFlies"]
-)  # following MLB's formula
+    batting_stats_df_red = filter_data(batting_stats_df, conditions_dict)
 
-batting_stats_df_red["difstrikeOutsbaseOnBalls"] = (
-    batting_stats_df_red["strikeOuts"] - batting_stats_df_red["baseOnBalls"]
-)
+    # generate features
+    batting_stats_df_red = create_babip(batting_stats_df_red)
 
+    batting_stats_df_red = create_dif_strike_outs_base_on_balls(batting_stats_df_red)
 
-batting_stats_df_red = plate_appearance_normalizer(
-    batting_stats_df_red,
-    [
-        "strikeOuts",
-        "homeRuns",
-        "hits",
-        "rbi",
-        "baseOnBalls",
-        "totalBases",
-        "difstrikeOutsbaseOnBalls",
-    ],
-)
+    batting_stats_df_red = create_plate_appearance_normalization(
+        batting_stats_df_red,
+        [
+            "strikeOuts",
+            "homeRuns",
+            "hits",
+            "rbi",
+            "baseOnBalls",
+            "totalBases",
+            "difstrikeOutsbaseOnBalls",
+        ],
+    )
 
-batting_stats_df_red = mean_normalizer(
-    batting_stats_df_red,
-    [
-        "avg",
-        "babip",
-        "obp",
-        "ops",
-        "hits",
-        "rbi",
-        "baseOnBalls",
-        "totalBases",
-        "difstrikeOutsbaseOnBalls",
-    ],
-)
+    batting_stats_df_red = create_mean_normalization(
+        batting_stats_df_red,
+        [
+            "avg",
+            "babip",
+            "obp",
+            "ops",
+            "hits",
+            "rbi",
+            "baseOnBalls",
+            "totalBases",
+            "difstrikeOutsbaseOnBalls",
+        ],
+    )
 
-# save data
-batting_stats_df_red.to_csv(DATA_FILE_LOCATION + BATTER_DATA_FILE_NAME)
+    # save data
+    batting_stats_df_red.to_csv(DATA_FILE_LOCATION + BATTER_DATA_FILE_NAME)
+
+    logging.info("Data treatment finished")
