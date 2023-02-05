@@ -1,18 +1,18 @@
 import json
-import pandas as pd
-import statsapi
 import logging
-
 from typing import Any, Dict
 
+import pandas as pd
+import statsapi
+
 from statsapi_parameters_script import (
-    DATE_TIME_EXECUTION,
     DATA_FILE_LOCATION,
-    LEAGUE_MAPPING,
+    DATE_TIME_EXECUTION,
     LEAGUE_DIVISION_MAPPING,
+    LEAGUE_MAPPING,
     LEAGUE_NAME,
-    PLAYER_DATA_FILE_NAME,
     LEAGUE_STANDINGS_FILE_NAME,
+    PLAYER_DATA_FILE_NAME,
 )
 
 # creates a logger

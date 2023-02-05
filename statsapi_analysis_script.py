@@ -1,15 +1,14 @@
-import pandas as pd
 import matplotlib
 import matplotlib.pyplot as plt
-
+import pandas as pd
 
 matplotlib.use("Agg")
 
 from statsapi_parameters_script import (
-    OUTPUT_FILE_LOCATION,
-    DATA_FILE_LOCATION,
     BATTER_DATA_FILE_NAME,
+    DATA_FILE_LOCATION,
     OUTPUT_DETAILS,
+    OUTPUT_FILE_LOCATION,
 )
 
 
