@@ -1,11 +1,11 @@
 import glob
+import uuid
+from datetime import datetime
+from typing import Dict
+
 import matplotlib
 import matplotlib.pyplot as plt
 import pandas as pd
-import uuid
-
-from typing import Dict
-from datetime import datetime
 from matplotlib.ticker import MaxNLocator
 
 DATE_TIME_EXECUTION = datetime.today().strftime("%Y-%m-%d")
@@ -13,8 +13,8 @@ DATE_TIME_EXECUTION = datetime.today().strftime("%Y-%m-%d")
 
 from statsapi_parameters_script import (
     DATA_FILE_LOCATION,
-    OUTPUT_FILE_LOCATION,
     LEAGUE_NAME_LOCATION,
+    OUTPUT_FILE_LOCATION,
 )
 
 matplotlib.use("Agg")
