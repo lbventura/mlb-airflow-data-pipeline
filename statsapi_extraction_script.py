@@ -43,7 +43,7 @@ def get_league_division_standings() -> tuple[dict, dict]:
 
         for division in LEAGUE_DIVISION_MAPPING[league]:
             division_results: pd.DataFrame = pd.DataFrame(
-                statsapi.standings_data(league, season=2022)[division]["teams"]  # type: ignore
+                statsapi.standings_data(league)[division]["teams"]  # type: ignore
             )
             league_list.append(division_results)
             division_standings_dict[LEAGUE_MAPPING[league]][division] = division_results
