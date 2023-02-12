@@ -1,4 +1,0 @@
-#!/bin/sh
-source /root/anaconda3/bin/activate mlb-airflow
-python /root/mlb-airflow-data-pipeline/statsapi_analysis_script.py
-source /root/anaconda3/bin/deactivate mlb-airflow

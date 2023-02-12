@@ -1,4 +1,0 @@
-#!/bin/sh
-source /root/anaconda3/bin/activate mlb-airflow
-jupyter nbconvert --execute /root/mlb-airflow-data-pipeline/statsapi_reporting_notebook.ipynb --TemplateExporter.exclude_input=True --to html
-source /root/anaconda3/bin/deactivate mlb-airflow
