@@ -42,7 +42,7 @@ def sorting_and_index_reset(input_df: pd.DataFrame, date: str) -> pd.DataFrame:
     )
 
     # dropping the duplicate column for Luis Garcia
-    mod_input_df = mod_input_df.loc[:, ~mod_input_df.columns.duplicated()]
+    mod_input_df = mod_input_df.loc[:, ~mod_input_df.columns.duplicated()]  # type: ignore
 
     mod_input_df["date"] = date
     mod_input_df = mod_input_df.reset_index().set_index("date")

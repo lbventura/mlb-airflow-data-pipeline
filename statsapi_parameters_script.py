@@ -10,6 +10,10 @@ LEAGUE_DIVISION_MAPPING = {103: [200, 201, 202], 104: [203, 204, 205]}
 LEAGUE_NAME = "national_league"
 LEAGUE_NAME_LOCATION = "/root/mlb-airflow-data-pipeline/league_name_choice.txt"
 
+# if there is not an ongoing season, this parameter has to be set to the
+# previous year. Otherwise it should be set to None
+SEASON_YEAR = 2022
+
 # read the league name set at runtime
 with open(LEAGUE_NAME_LOCATION, "r") as text_file:
     LEAGUE_NAME = text_file.readline().strip()
