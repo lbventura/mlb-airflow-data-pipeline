@@ -1,0 +1,4 @@
+#!/bin/sh
+source /root/virtual-envs/mlb-airflow-venv/bin/activate
+python /root/mlb-airflow-data-pipeline/statsapi_time_series_creation_analysis_script.py
+deactivate /root/virtual-envs/mlb-airflow-venv/bin
