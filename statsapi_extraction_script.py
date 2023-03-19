@@ -13,6 +13,7 @@ from statsapi_parameters_script import (
     LEAGUE_NAME,
     LEAGUE_STANDINGS_FILE_NAME,
     PLAYER_DATA_FILE_NAME,
+    SEASON_YEAR,
 )
 
 # creates a logger
@@ -43,7 +44,7 @@ def get_league_division_standings() -> tuple[dict, dict]:
 
         for division in LEAGUE_DIVISION_MAPPING[league]:
             division_results: pd.DataFrame = pd.DataFrame(
-                statsapi.standings_data(league)[division]["teams"]  # type: ignore
+                statsapi.standings_data(league, season=SEASON_YEAR)[division]["teams"]  # type: ignore
             )
             league_list.append(division_results)
             division_standings_dict[LEAGUE_MAPPING[league]][division] = division_results
@@ -67,10 +68,13 @@ def get_league_team_rosters_player_names(
     league_standings_dict, division_standings_dict = get_league_division_standings()
 
     league_standings = league_standings_dict[league_name]
-    league_team_info = {team: statsapi.lookup_team(team) for team in league_standings}
+    league_team_info = {
+        team: statsapi.lookup_team(team, season=SEASON_YEAR)
+        for team in league_standings
+    }
 
     league_team_rosters = {
-        team_id: statsapi.roster(team_id).split("\n")
+        team_id: statsapi.roster(team_id, season=SEASON_YEAR).split("\n")
         for team_id in league_standings["team_id"].values
     }
 
@@ -109,7 +113,7 @@ def get_player_stats_dataframe_per_team(
     """
 
     team_name_ids = {
-        player_name: statsapi.lookup_player(player_name)[0]["id"]
+        player_name: statsapi.lookup_player(player_name, season=SEASON_YEAR)[0]["id"]
         for player_name in league_team_rosters_player_names[team_number]
     }
 
@@ -121,7 +125,13 @@ def get_player_stats_dataframe_per_team(
 
     for name, id in team_name_ids.items():
         try:
-            team_stats_json[name] = statsapi.player_stats(id).split("\n")
+            if SEASON_YEAR is not None:
+                stats_type = "career"
+            else:
+                stats_type = "season"
+            team_stats_json[name] = statsapi.player_stats(id, type=stats_type).split(
+                "\n"
+            )
             corrected_team_name_ids[name] = id
         except TypeError:
             inactive_player_dict[name] = id

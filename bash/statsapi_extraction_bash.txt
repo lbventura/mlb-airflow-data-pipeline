@@ -1,0 +1,4 @@
+#!/bin/sh
+source /root/virtual-envs/mlb-airflow-venv/bin/activate
+python /root/mlb-airflow-data-pipeline/statsapi_extraction_script.py
+deactivate /root/virtual-envs/mlb-airflow-venv/bin
