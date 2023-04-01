@@ -11,6 +11,7 @@ from statsapi_parameters_script import (
     DATA_FILTER_THRESHOLD,
     PITCHER_DATA_FILE_NAME,
     PLAYER_DATA_FILE_NAME,
+    DEFENDER_DATA_FILE_NAME,
 )
 
 # creates a logger
@@ -40,16 +41,25 @@ class DataTreater:
         self.input_data = pd.read_csv(
             self.input_parameters.path_to_input_data, index_col=0
         )
+        logging.info(f"Data input was successful")
+        return self
 
     def get_subset_columns(self):
         self.intermediate_data = self.input_data[
             self.input_parameters.subset_columns
         ].dropna()
+        logging.info(
+            f"The set of columns for this dataset is {self.input_parameters.subset_columns}"
+        )
+        logging.info(f"Subsetting columns was successful")
+        return self
 
     def get_filter_data(self):
         self.intermediate_data = filter_data(
-            self.input_data, self.input_parameters.filter_conditions_dict
+            self.intermediate_data, self.input_parameters.filter_conditions_dict
         )
+        logging.info(f"Filtering data was successful")
+        return self
 
     def get_output_data(self):
 
@@ -61,16 +71,17 @@ class DataTreater:
                 )
             else:
                 self.intermediate_data = function(self.intermediate_data)
+            logging.info(f"Generating output data was successful")
+        return self
 
     def get_output_data_file(self):
         (self.intermediate_data).to_csv(self.input_parameters.path_to_output_data)  # type: ignore
+        logging.info(f"Generating output file was successful")
+        return self
 
     def generate_output_file(self):
-        self.get_input_data()
-        self.get_subset_columns()
-        self.get_filter_data()
-        self.get_output_data()
-        self.get_output_data_file()
+        self.get_input_data().get_subset_columns().get_filter_data().get_output_data().get_output_data_file()
+        return self
 
 
 # helper functions
@@ -272,10 +283,8 @@ pitching_stats = [
     "balks",
     "wildPitches",
     "pickoffs",
-    # "winPercentage",
     "pitchesPerInning",
     "gamesFinished",
-    # "strikeoutWalkRatio",
     "strikeoutsPer9Inn",
     "walksPer9Inn",
     "hitsPer9Inn",
@@ -286,70 +295,29 @@ pitching_stats = [
     "outs",
 ]
 
-# guarantee type correctness
-batting_stats_int_list = [
+defensive_stats = [
     "gamesPlayed",
-    "groundOuts",
-    "airOuts",
-    "runs",
-    "doubles",
-    "triples",
-    "homeRuns",
-    "strikeOuts",
-    "baseOnBalls",
-    "intentionalWalks",
-    "hits",
-    "hitByPitch",
-    "atBats",
-    "caughtStealing",
-    "stolenBases",
-    "groundIntoDoublePlay",
     "plateAppearances",
-    "totalBases",
-    "leftOnBase",
-    "sacBunts",
-    "sacFlies",
-    "catchersInterference",
+    "atBats",
+    "assists",
+    "catcherERA",
+    "chances",
+    "doublePlays",
+    "errors",
+    "fielding",
+    "games",
+    "passedBall",
+    "putOuts",
+    "rangeFactorPer9Inn",
+    "rangeFactorPerGame",
+    "throwingErrors",
+    "triplePlays",
 ]
 
-pitching_stats_int_list = [
-    "gamesPlayed",
-    "intentionalWalks",
-    "numberOfPitches",
-    "inningsPitched",
-    "wins",
-    "losses",
-    "saves",
-    "saveOpportunities",
-    "holds",
-    "blownSaves",
-    "earnedRuns",
-    "battersFaced",
-    "completeGames",
-    "shutouts",
-    "strikes",
-    "hitBatsmen",
-    "balks",
-    "wildPitches",
-    "pickoffs",
-    "inheritedRunners",
-    "inheritedRunnersScored",
-    "innings",
-    "outs",
-]
-
-batting_stats_float_list = [
-    ele for ele in batting_stats if ele not in batting_stats_int_list
-]
-
-pitching_stats_float_list = [
-    ele for ele in batting_stats if ele not in pitching_stats_int_list
-]
-
-# we threw it away, but we should guarantee column types here
-# create batting stats list
-batting_stats_list = ["playername"] + batting_stats_int_list + batting_stats_float_list
+# create final list
+batting_stats_list = ["playername"] + batting_stats
 pitching_stats_list = ["playername"] + pitching_stats
+defending_stats_list = ["playername"] + defensive_stats
 
 # setting up information for the batter extraction
 batter_filter_conditions_dict = {"plateAppearances": 100, "atBats": 50}
@@ -387,7 +355,7 @@ batter_transformation_list = [
     create_mean_normalization,
 ]
 
-# Same thing but for pitchers
+# same thing for pitchers
 pitcher_filter_conditions_dict = {"gamesPlayed": 25, "inningsPitched": 50}
 
 pitcher_innings_norm_stats = ["intentionalWalks", "numberOfPitches", "strikes", "outs"]
@@ -395,7 +363,6 @@ pitcher_innings_norm_stats = ["intentionalWalks", "numberOfPitches", "strikes", 
 pitcher_mean_norm_stats = [
     "era",
     "whip",
-    # "winPercentage",
     "strikeoutsPer9Inn",
     "walksPer9Inn",
     "hitsPer9Inn",
@@ -409,6 +376,49 @@ pitcher_custom_features_dict = {
 
 pitcher_transformation_list = [
     create_innings_pitched_normalization,
+    create_mean_normalization,
+]
+
+# same thing for defenders
+# there is a weird choice to be made here as defensive players are simultaneously offensive players
+
+defensive_stats = [
+    "gamesPlayed",
+    "assists",
+    "catcherERA",
+    "chances",
+    "doublePlays",
+    "errors",
+    "fielding",
+    "games",
+    "passedBall",
+    "putOuts",
+    # "rangeFactorPer9Inn", # probably need to compute rangeFactor by hand
+    "rangeFactorPerGame",
+    "throwingErrors",
+    "triplePlays",
+]
+
+defender_filter_conditions_dict = {
+    "plateAppearances": 100,
+    "atBats": 50,
+}  # this likely needs to be augmented in light of the analysis for batters
+
+
+defender_mean_norm_stats = [
+    "catcherERA",
+    "assists",
+    "errors",
+    # "rangeFactorPer9Inn",
+    "doublePlays",
+    "fielding",
+]
+
+defender_custom_features_dict = {
+    "create_mean_normalization": defender_mean_norm_stats,
+}
+
+defender_transformation_list = [
     create_mean_normalization,
 ]
 
@@ -445,5 +455,23 @@ if __name__ == "__main__":
     pitcher_data_treater = DataTreater(input_parameters=pitcher_input_data_repr)
 
     pitcher_data_treater.generate_output_file()
+
+    logging.info("Data treatment for pitchers finished")
+
+    # defender
+    defender_input_data_repr = DataTreaterInputRepresentation(
+        path_to_input_data=DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME,
+        path_to_output_data=DATA_FILE_LOCATION + DEFENDER_DATA_FILE_NAME,
+        subset_columns=defending_stats_list,
+        filter_conditions_dict=defender_filter_conditions_dict,
+        custom_features=defender_custom_features_dict,
+        transformation_list=defender_transformation_list,
+    )
+
+    defender_data_treater = DataTreater(input_parameters=defender_input_data_repr)
+
+    defender_data_treater.generate_output_file()
+
+    logging.info("Data treatment for defenders finished")
 
     logging.info("Data treatment finished")

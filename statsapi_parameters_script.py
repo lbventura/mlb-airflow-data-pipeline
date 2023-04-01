@@ -12,7 +12,7 @@ LEAGUE_NAME_LOCATION = "/root/mlb-airflow-data-pipeline/league_name_choice.txt"
 
 # if there is not an ongoing season, this parameter has to be set to the
 # previous year. Otherwise it should be set to None
-SEASON_YEAR = 2022
+SEASON_YEAR = 2023
 
 # read the league name set at runtime
 with open(LEAGUE_NAME_LOCATION, "r") as text_file:
@@ -32,5 +32,6 @@ DATA_FILTER_THRESHOLD = 0.6
 
 BATTER_DATA_FILE_NAME = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}_batter_stats_df.csv"
 PITCHER_DATA_FILE_NAME = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}_pitcher_stats_df.csv"
+DEFENDER_DATA_FILE_NAME = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}_defender_stats_df.csv"
 
 OUTPUT_DETAILS = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}"
