@@ -8,6 +8,7 @@ import statsapi
 from statsapi_parameters_script import (
     DATA_FILE_LOCATION,
     DATE_TIME_EXECUTION,
+    IS_SEASON_STATS,
     LEAGUE_DIVISION_MAPPING,
     LEAGUE_MAPPING,
     LEAGUE_NAME,
@@ -125,7 +126,7 @@ def get_player_stats_dataframe_per_team(
 
     for name, id in team_name_ids.items():
         try:
-            if SEASON_YEAR is None:
+            if not IS_SEASON_STATS:
                 stats_type = "career"
             else:
                 stats_type = "season"
