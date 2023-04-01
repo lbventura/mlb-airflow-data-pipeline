@@ -125,7 +125,7 @@ def get_player_stats_dataframe_per_team(
 
     for name, id in team_name_ids.items():
         try:
-            if SEASON_YEAR is not None:
+            if SEASON_YEAR is None:
                 stats_type = "career"
             else:
                 stats_type = "season"
