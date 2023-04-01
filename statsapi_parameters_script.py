@@ -11,8 +11,9 @@ LEAGUE_NAME = "national_league"
 LEAGUE_NAME_LOCATION = "/root/mlb-airflow-data-pipeline/league_name_choice.txt"
 
 # if there is not an ongoing season, this parameter has to be set to the
-# previous year. Otherwise it should be set to None
+# previous year.
 SEASON_YEAR = 2023
+# set this parameter to False to fetch player career stats
 IS_SEASON_STATS = True
 
 # read the league name set at runtime
