@@ -2,12 +2,13 @@ from airflow import DAG
 from airflow.operators.bash import BashOperator
 from datetime import datetime, timedelta
 
-default_args = {"start_date": datetime(2022, 10, 10)}
+default_args = {"start_date": datetime(2023, 4, 7)}
 
 dag_al = DAG(
     "mlb-airflow-data-pipeline-reporting-al-dag",
     default_args=default_args,
     schedule_interval="0 17 * * 1",
+    catchup=False,
 )
 
 t0 = BashOperator(
