@@ -1,13 +1,11 @@
 import logging
 import pandas as pd
-from typing import Any, Dict
 
 import pandas as pd
 import statsapi
 
 from statsapi_parameters_script import (
     DATA_FILE_LOCATION,
-    DATE_TIME_EXECUTION,
     IS_SEASON_STATS,
     LEAGUE_DIVISION_MAPPING,
     LEAGUE_MAPPING,
