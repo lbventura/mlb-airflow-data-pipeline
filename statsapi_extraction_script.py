@@ -1,5 +1,5 @@
-import json
 import logging
+import pandas as pd
 from typing import Any, Dict
 
 import pandas as pd
@@ -27,218 +27,234 @@ logging.basicConfig(
 )
 
 
-def get_league_division_standings() -> tuple[dict, dict]:
-    """
-    Creates the league and division standings for one of the two leagues in MLB.
+def _insert_col_in_first_position(
+    dataframe: pd.DataFrame, column_name: str = "playername"
+) -> pd.DataFrame:
+    col = dataframe.pop(column_name)
+    dataframe.insert(0, col.name, col)
+    return dataframe
 
-    Returns:
-    dict: League standings
-    dict: Division standings
-    """
-    league_standings_dict = {}
-    division_standings_dict: Dict[Any, Any] = {}
 
-    for league in LEAGUE_DIVISION_MAPPING.keys():
+class TeamStats:
+    def __init__(self, player_names_per_team: list[str]):
+        self.player_names_per_team = player_names_per_team
 
+    def get_stats_type(self, is_season_stats: bool = IS_SEASON_STATS) -> str:
+        if is_season_stats:
+            stats_type = "season"
+        else:
+            stats_type = "career"
+        return stats_type
+
+    def _set_player_name_ids(self) -> None:
+        player_name_ids = {
+            player_name: statsapi.lookup_player(player_name, season=SEASON_YEAR)[0][
+                "id"
+            ]
+            for player_name in self.player_names_per_team
+        }
+        self.player_name_ids = player_name_ids
+
+    def get_team_stats(self) -> tuple[pd.DataFrame, dict, dict]:
+
+        team_stats_json = {}
+        active_player_name_ids = {}
+        inactive_player_info = {}
+
+        self._set_player_name_ids()
+
+        for name, id in self.player_name_ids.items():
+            try:
+                team_stats_json[name] = statsapi.player_stats(
+                    id, type=self.get_stats_type()
+                ).split("\n")
+                active_player_name_ids[name] = id
+            except TypeError:
+                inactive_player_info[name] = id
+
+        team_player_stats = pd.DataFrame(
+            data={
+                self.player_name_ids[player]: {
+                    stat.split(": ")[0]: stat.split(": ")[1]
+                    for stat in team_stats_json[player]
+                    if ":" in stat
+                }
+                for player in team_stats_json.keys()
+            }
+        ).T
+
+        return team_player_stats, active_player_name_ids, inactive_player_info
+
+
+class DataExtractor:
+    def __init__(self, league_name: str = LEAGUE_NAME) -> None:
+        self.league_name = league_name
+
+    def set_league_division_standings(self) -> None:
+        """
+        Creates the league and division standings for one of the two leagues in MLB.
+        """
+
+        league_number = LEAGUE_MAPPING[self.league_name]
         league_list = []
-        division_standings_dict[LEAGUE_MAPPING[league]] = {}
 
-        for division in LEAGUE_DIVISION_MAPPING[league]:
+        for division in LEAGUE_DIVISION_MAPPING[league_number]:
             division_results: pd.DataFrame = pd.DataFrame(
-                statsapi.standings_data(league, season=SEASON_YEAR)[division]["teams"]  # type: ignore
+                statsapi.standings_data(league_number, season=SEASON_YEAR)[division]["teams"]  # type: ignore
             )
             league_list.append(division_results)
-            division_standings_dict[LEAGUE_MAPPING[league]][division] = division_results
-        league_standings_dict[LEAGUE_MAPPING[league]] = pd.concat(league_list, axis=0)
 
-    return league_standings_dict, division_standings_dict
+        league_standings = pd.concat(league_list, axis=0)
 
+        (league_standings).to_csv(DATA_FILE_LOCATION + LEAGUE_STANDINGS_FILE_NAME)
 
-def get_league_team_rosters_player_names(
-    league_name: str = LEAGUE_NAME,
-) -> tuple[dict, dict, dict]:
-    """
-    Uses get_league_division_standings this to generate the player names for each team roster.
-    Args:
-        team_number (int): MLB team number
+        self.league_standings = league_standings
 
-    Returns:
-        pd.DataFrame: pandas DataFrame containing containing the
-        players names for each team roster
-    """
-    league_standings_dict, division_standings_dict = get_league_division_standings()
+    def set_team_ids_and_names(self) -> None:
+        """
+        Creates a dictionary where the keys are the team_ids and values are the team names.
+        """
+        team_ids_names_df = self.league_standings[["team_id", "name"]]
+        team_ids_names_df.set_index("team_id")
+        team_ids_names = team_ids_names_df.to_dict(orient="records")
 
-    league_standings = league_standings_dict[league_name]
-    league_team_info = {
-        team: statsapi.lookup_team(team, season=SEASON_YEAR)
-        for team in league_standings
-    }
-
-    league_team_rosters = {
-        team_id: statsapi.roster(team_id, season=SEASON_YEAR).split("\n")
-        for team_id in league_standings["team_id"].values
-    }
-
-    league_team_rosters_player_names = {
-        team_id: [
-            " ".join(player.split(" ")[-2:]) for player in league_team_rosters[team_id]
-        ]
-        for team_id in league_standings["team_id"].values
-    }
-
-    return (
-        league_standings_dict,
-        division_standings_dict,
-        league_team_rosters_player_names,
-    )
-
-
-def get_player_stats_dataframe_per_team(
-    team_number: int,
-    league_team_rosters_player_names: dict,
-) -> tuple[pd.DataFrame, dict]:
-    """Takes as input a team number and returns a pandas DataFrame
-    containing the stats of the active players,
-    and a dictionary with inactive player information.
-
-    This methodology has a big problem: if players change teams, their
-    stats from the previous team will not be considered.
-
-    Args:
-        team_number (int): MLB team number
-
-    Returns:
-        pd.DataFrame: pandas DataFrame containing containing the
-        stats of the active players for a particular team
-        dict: Dictionary with inactive player information
-    """
-
-    team_name_ids = {
-        player_name: statsapi.lookup_player(player_name, season=SEASON_YEAR)[0]["id"]
-        for player_name in league_team_rosters_player_names[team_number]
-    }
-
-    team_stats_json = {}
-    corrected_team_name_ids = {}
-    inactive_player_dict = (
-        {}
-    )  # this is a dict of playername, playerid for inactive players
-
-    for name, id in team_name_ids.items():
-        try:
-            if not IS_SEASON_STATS:
-                stats_type = "career"
-            else:
-                stats_type = "season"
-            team_stats_json[name] = statsapi.player_stats(id, type=stats_type).split(
-                "\n"
-            )
-            corrected_team_name_ids[name] = id
-        except TypeError:
-            inactive_player_dict[name] = id
-
-    team_player_stats = pd.DataFrame(
-        data={
-            team_name_ids[player]: {
-                stat.split(": ")[0]: stat.split(": ")[1]
-                for stat in team_stats_json[player]
-                if ":" in stat
-            }
-            for player in team_stats_json.keys()
+        self.team_id_name_mapping = {
+            record["team_id"]: record["name"] for record in team_ids_names
         }
-    ).T
 
-    if len(corrected_team_name_ids.keys()) != len(team_player_stats):
-        team_player_stats["playername"] = list(corrected_team_name_ids.keys())[:-1]
-    else:
-        team_player_stats["playername"] = corrected_team_name_ids.keys()
+    def set_league_team_rosters_player_names(self) -> None:
+        """
+        Uses _set_league_division_standings to generate the player names for each team roster.
+        Args:
+            team_number (int): MLB team number
 
-    col = team_player_stats.pop("playername")
-    team_player_stats.insert(0, col.name, col)
+        Returns:
+            dict: Dictionary where keys are team_ids and the values are player names of each roster
+        """
+        self.set_league_division_standings()
+        team_ids = self.league_standings["team_id"].values
 
-    return team_player_stats, inactive_player_dict
+        league_team_rosters = {
+            team_id: statsapi.roster(team_id, season=SEASON_YEAR).split("\n")
+            for team_id in team_ids
+        }
 
+        league_team_rosters_player_names = {
+            team_id: [
+                " ".join(player.split(" ")[-2:])
+                for player in league_team_rosters[team_id]
+            ]
+            for team_id in team_ids
+        }
 
-def get_player_stats_per_league(
-    league_team_rosters_player_names: dict,
-) -> tuple[pd.DataFrame, dict, list]:
-    """
-    Returns player individual stats per league.
+        self.league_team_rosters_player_names: dict[
+            int, list[str]
+        ] = league_team_rosters_player_names  # type: ignore
 
-    Returns:
-        pd.DataFrame: Containing stats for a given league
-        dict: Keys are team names and values are inactive players
-        list: List of teams for which we failed to get stats
-    """
-    league_player_team_stats_dict = {}
-    inactive_players_per_team = {}
-    failed_teams_list = []
+    def get_player_stats_dataframe_per_team(
+        self,
+        team_number: int,
+    ) -> tuple[pd.DataFrame, dict]:
+        """Takes as input a team number and returns a pandas DataFrame
+        containing the stats of the active players,
+        and a dictionary with inactive player information.
 
-    for team_number in league_team_rosters_player_names.keys():
-        try:
-            team_info = get_player_stats_dataframe_per_team(
-                team_number, league_team_rosters_player_names
-            )
-            league_player_team_stats_dict[team_number] = team_info[0]
-            if len(team_info[1]) != 0:
-                inactive_players_per_team[int(team_number)] = team_info[1]
-        except:
-            failed_teams_list.append(team_number)
-            logging.exception(
-                f"Oops! Something went wrong for the team_number {team_number}"
-            )
-            continue
+        This methodology has a big problem: if players change teams, their
+        stats from the previous team will not be considered.
 
-    return (
-        pd.concat(league_player_team_stats_dict.values()),
-        inactive_players_per_team,
-        failed_teams_list,
-    )
+        Args:
+            team_number (int): MLB team number
+
+        Returns:
+            pd.DataFrame: pandas DataFrame containing containing the
+            stats of the active players for a particular team
+            dict: Dictionary with inactive player information
+        """
+
+        player_names_per_team = self.league_team_rosters_player_names[team_number]
+
+        player_information_per_team = TeamStats(
+            player_names_per_team=player_names_per_team
+        )
+
+        (
+            team_player_stats,
+            active_player_name_ids,
+            inactive_player_info,
+        ) = player_information_per_team.get_team_stats()
+
+        corrected_player_name_ids: dict[str, int] = {
+            name: id for name, id in active_player_name_ids.items() if len(name) >= 2
+        }
+
+        corrected_player_names = [ele for ele in corrected_player_name_ids.keys()]
+        corrected_player_ids = [ele for ele in corrected_player_name_ids.values()]
+
+        corrected_team_player_stats = team_player_stats.loc[corrected_player_ids]
+        corrected_team_player_stats["playername"] = corrected_player_names
+
+        return (
+            _insert_col_in_first_position(corrected_team_player_stats),
+            inactive_player_info,
+        )
+
+    def get_player_stats_per_league(
+        self,
+    ) -> tuple[pd.DataFrame, dict, list]:
+        """
+        Returns player individual stats per league.
+
+        Returns:
+            pd.DataFrame: Containing stats for a given league
+            dict: Keys are team names and values are inactive players
+            list: List of teams for which we failed to get stats
+        """
+        league_player_team_stats = {}
+        inactive_players_per_team = {}
+        failed_teams = []
+
+        for team_number in self.league_team_rosters_player_names.keys():
+            try:
+                (
+                    team_player_stats,
+                    inactive_player_info,
+                ) = self.get_player_stats_dataframe_per_team(team_number)
+                league_player_team_stats[team_number] = team_player_stats
+                if inactive_player_info:
+                    inactive_players_per_team[team_number] = inactive_player_info
+                successful_team_name = self.team_id_name_mapping[team_number]
+                logging.info(
+                    f"Extraction succeeded for the team {successful_team_name}, team number {team_number}"
+                )
+            except:
+                failed_team_name = self.team_id_name_mapping[team_number]
+                failed_teams.append(failed_team_name)
+                logging.exception(
+                    f"Extraction succeeded for the team {failed_team_name}, team number {team_number}"
+                )
+        player_stats = pd.concat(league_player_team_stats.values())
+        return player_stats, inactive_players_per_team, failed_teams
 
 
 if __name__ == "__main__":
 
     logging.info("Data extraction started")
 
-    # extract league information
-    (
-        league_standings_dict,
-        division_standings_dict,
-        league_team_rosters_player_names,
-    ) = get_league_team_rosters_player_names(LEAGUE_NAME)
+    data_extractor = DataExtractor(league_name=LEAGUE_NAME)
 
-    # save league information
-    league_standings_dict[LEAGUE_NAME].to_csv(
-        DATA_FILE_LOCATION + LEAGUE_STANDINGS_FILE_NAME
-    )
+    data_extractor.set_league_team_rosters_player_names()
+    data_extractor.set_team_ids_and_names()
 
-    # extract player information
     (
         league_player_team_stats_df,
         inactive_players_per_team,
-        failed_teams_list,
-    ) = get_player_stats_per_league(league_team_rosters_player_names)
+        failed_teams,
+    ) = data_extractor.get_player_stats_per_league()
 
-    # save full player stats
     league_player_team_stats_df.to_csv(DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME)
 
-    # save inactive players and failed teams json
-    if len(inactive_players_per_team) != 0:
-        with open(
-            DATA_FILE_LOCATION
-            + f"{DATE_TIME_EXECUTION}_{LEAGUE_NAME}_inactive_players.json",
-            "w",
-        ) as fp:
-            inactive_players_per_team_json = json.dumps(inactive_players_per_team)
-            json.dump(inactive_players_per_team, fp)
-
-    if len(failed_teams_list) != 0:
-        with open(
-            DATA_FILE_LOCATION
-            + f"{DATE_TIME_EXECUTION}_{LEAGUE_NAME}_failed_teams.json",
-            "w",
-        ) as fp:
-            failed_teams_list_json = json.dumps(failed_teams_list)
-            json.dump(failed_teams_list_json, fp)
+    logging.info("Full player stats were saved")
+    logging.info(f"The inactive players per team are {inactive_players_per_team}")
+    logging.info(f"The failed teams are {failed_teams}")
 
     logging.info("Data extraction finished")

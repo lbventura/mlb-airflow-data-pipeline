@@ -37,50 +37,47 @@ class DataTreater:
     def __init__(self, input_parameters: DataTreaterInputRepresentation):
         self.input_parameters = input_parameters
 
-    def get_input_data(self):
-        self.input_data = pd.read_csv(
-            self.input_parameters.path_to_input_data, index_col=0
-        )
+    def get_input_data(self) -> pd.DataFrame:
+        input_data = pd.read_csv(self.input_parameters.path_to_input_data, index_col=0)
         logging.info(f"Data input was successful")
-        return self
+        return input_data
 
-    def get_subset_columns(self):
-        self.intermediate_data = self.input_data[
+    def get_subset_data(self) -> pd.DataFrame:
+        intermediate_data = self.get_input_data()[
             self.input_parameters.subset_columns
         ].dropna()
         logging.info(
             f"The set of columns for this dataset is {self.input_parameters.subset_columns}"
         )
-        logging.info(f"Subsetting columns was successful")
-        return self
+        logging.info(f"Createing subdataset columns was successful")
+        return intermediate_data
 
-    def get_filter_data(self):
-        self.intermediate_data = filter_data(
-            self.intermediate_data, self.input_parameters.filter_conditions_dict
+    def get_filter_data(self) -> pd.DataFrame:
+        filtered_data = filter_data(
+            self.get_subset_data(), self.input_parameters.filter_conditions_dict
         )
         logging.info(f"Filtering data was successful")
-        return self
+        return filtered_data
 
-    def get_output_data(self):
+    def set_output_data(self) -> None:
+
+        filtered_data = self.get_filter_data()
 
         for function in self.input_parameters.transformation_list:
             if function.__name__ in self.input_parameters.custom_features.keys():
-                self.intermediate_data = function(
-                    self.intermediate_data,
+                filtered_data = function(
+                    filtered_data,
                     self.input_parameters.custom_features[function.__name__],
                 )
             else:
-                self.intermediate_data = function(self.intermediate_data)
+                filtered_data = function(filtered_data)
             logging.info(f"Generating output data was successful")
-        return self
+
+        self.output_data = filtered_data
 
     def get_output_data_file(self):
-        (self.intermediate_data).to_csv(self.input_parameters.path_to_output_data)  # type: ignore
+        (self.output_data).to_csv(self.input_parameters.path_to_output_data)  # type: ignore
         logging.info(f"Generating output file was successful")
-        return self
-
-    def generate_output_file(self):
-        self.get_input_data().get_subset_columns().get_filter_data().get_output_data().get_output_data_file()
         return self
 
 
@@ -438,7 +435,8 @@ if __name__ == "__main__":
 
     batter_data_treater = DataTreater(input_parameters=batter_input_data_repr)
 
-    batter_data_treater.generate_output_file()
+    batter_data_treater.set_output_data()
+    batter_data_treater.get_output_data_file()
 
     logging.info("Data treatment for batters finished")
 
@@ -454,7 +452,8 @@ if __name__ == "__main__":
 
     pitcher_data_treater = DataTreater(input_parameters=pitcher_input_data_repr)
 
-    pitcher_data_treater.generate_output_file()
+    pitcher_data_treater.set_output_data()
+    pitcher_data_treater.get_output_data_file()
 
     logging.info("Data treatment for pitchers finished")
 
@@ -470,7 +469,8 @@ if __name__ == "__main__":
 
     defender_data_treater = DataTreater(input_parameters=defender_input_data_repr)
 
-    defender_data_treater.generate_output_file()
+    defender_data_treater.set_output_data()
+    defender_data_treater.get_output_data_file()
 
     logging.info("Data treatment for defenders finished")
 
