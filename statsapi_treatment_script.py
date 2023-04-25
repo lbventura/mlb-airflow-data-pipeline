@@ -49,7 +49,7 @@ class DataTreater:
         logging.info(
             f"The set of columns for this dataset is {self.input_parameters.subset_columns}"
         )
-        logging.info(f"Createing subdataset columns was successful")
+        logging.info(f"Creating sub-dataset columns was successful")
         return intermediate_data
 
     def get_filter_data(self) -> pd.DataFrame:
@@ -81,7 +81,6 @@ class DataTreater:
         return self
 
 
-# helper functions
 def filter_data(input_df: pd.DataFrame, conditions_dict: dict) -> pd.DataFrame:
     """Filter data from the input DataFrame as specified by the conditions.
     Raises a warning at runtime if the percentage of good data is below a certain threshold
@@ -104,7 +103,7 @@ def filter_data(input_df: pd.DataFrame, conditions_dict: dict) -> pd.DataFrame:
 
     if good_data_percentage < DATA_FILTER_THRESHOLD:
         logging.warning(
-            f"There might be a data problem: the percentage of good data, {good_data_percentage}, is below the threshold"
+            f"Possible data problem: the percentage of good data, {good_data_percentage}, is below the threshold"
         )
 
     return return_df
