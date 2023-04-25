@@ -123,8 +123,6 @@ class DataExtractor:
     def set_league_team_rosters_player_names(self) -> None:
         """
         Uses _set_league_division_standings to generate the player names for each team roster.
-        Args:
-            team_number (int): MLB team number
 
         Returns:
             dict: Dictionary where keys are team_ids and the values are player names of each roster
