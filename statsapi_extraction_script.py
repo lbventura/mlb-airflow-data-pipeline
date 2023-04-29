@@ -186,7 +186,7 @@ class DataExtractor:
 
     def set_league_team_rosters_player_names(self) -> None:
         """
-        Uses _set_league_division_standings to generate the player names for each team roster.
+        Uses set_league_division_standings to generate the player names for each team roster.
         """
         self.set_league_division_standings()
         team_ids = self.league_standings["team_id"].values
