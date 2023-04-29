@@ -199,6 +199,7 @@ batter_input_parameters = PlotterInputRepresentation(
 
 
 if __name__ == "__main__":
-    # PlotGenerator(input_parameters=league_input_parameters)
+    league_plot_generator = PlotGenerator(input_parameters=league_input_parameters)
+    league_plot_generator.get_time_series_stats_plots()
     batter_plot_generator = PlotGenerator(input_parameters=batter_input_parameters)
     batter_plot_generator.get_time_series_stats_plots()
