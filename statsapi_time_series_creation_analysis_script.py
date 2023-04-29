@@ -24,17 +24,16 @@ with open(LEAGUE_NAME_LOCATION, "r") as text_file:
 
 class PlotterInputRepresentation(BaseModel):
     dataset_name: str
-    time_series_stats_list: list[str]
-    time_series_stats_int_dict: dict[str, bool]
+    time_series_stats_is_int: dict[str, bool]
     n_best: int
 
 
 class PlotGenerator:
     def __init__(self, input_parameters: PlotterInputRepresentation):
         self.input_parameters = input_parameters
-        self.league_dataset_dict: dict = {}
-        self.time_series_data_dict: dict[str, list] = {
-            stat: [] for stat in self.input_parameters.time_series_stats_list
+        self.league_datasets: dict = {}
+        self.time_series_datasets: dict[str, list] = {
+            stat: [] for stat in self.input_parameters.time_series_stats_is_int.keys()
         }
 
     def get_time_series_stats_plots(self):
@@ -46,7 +45,8 @@ class PlotGenerator:
 
             time_series_stat_df: pd.DataFrame = self.time_series[stat].dropna(axis=1)
 
-            if self.input_parameters.time_series_stats_int_dict[stat]:
+            is_int = self.input_parameters.time_series_stats_is_int[stat]
+            if is_int:
                 time_series_stat_df.astype(int)
 
             self._set_time_series_plot(time_series_stat_df, stat)
@@ -62,24 +62,26 @@ class PlotGenerator:
         filenames = self._get_filenames()
 
         for file in filenames:
-            self._set_file_data(file=file)
+            self._generate_data_from_file(file=file)
 
         time_series: dict[str, pd.DataFrame] = self._get_time_series()
         self.time_series = time_series
 
-    def _set_file_data(self, file: str) -> None:
+    def _generate_data_from_file(self, file: str) -> None:
 
         date = file.split("_")[2]
         date_df = pd.read_csv(file)
         date_df.rename(columns={"playername": "name"}, inplace=True)
 
-        if self.input_parameters.dataset_name == "league_standings":
+        dataset_name = self.input_parameters.dataset_name
+        if dataset_name == "league_standings":
             date_df["win-total-ratio"] = date_df["w"] / (date_df["w"] + date_df["l"])
 
-        self.league_dataset_dict[date] = date_df
+        self.league_datasets[date] = date_df
 
-        for stat in self.input_parameters.time_series_stats_list:
-            self.time_series_data_dict[stat].append(
+        stats = self.input_parameters.time_series_stats_is_int.keys()
+        for stat in stats:
+            self.time_series_datasets[stat].append(
                 sorting_and_index_reset(date_df[["name", stat]], date)
             )
 
@@ -87,11 +89,12 @@ class PlotGenerator:
 
         time_series: dict = {}
 
-        for key in self.time_series_data_dict.keys():
-            time_series[key] = pd.concat(self.time_series_data_dict[key]).drop(
+        days = self.time_series_datasets.keys()
+        for day in days:
+            time_series[day] = pd.concat(self.time_series_datasets[day]).drop(
                 columns=["index"]
             )
-            time_series[key].index = pd.to_datetime(time_series[key].index)
+            time_series[day].index = pd.to_datetime(time_series[day].index)
 
         return time_series
 
@@ -103,7 +106,7 @@ class PlotGenerator:
         ].plot(ax=ax, style=".", linewidth=5, markersize=12, xlabel="", alpha=1)
         ax.set_ylabel(stat)
         ax.yaxis.set_major_locator(
-            MaxNLocator(integer=self.input_parameters.time_series_stats_int_dict[stat])
+            MaxNLocator(integer=self.input_parameters.time_series_stats_is_int[stat])
         )
         ax.legend(
             loc="upper center",
@@ -112,11 +115,13 @@ class PlotGenerator:
             bbox_to_anchor=(0.5, -0.2),
             frameon=False,
         )
-        OUTPUT_DETAILS = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}"
+
+        dataset_name = self.input_parameters.dataset_name
+
         plt.savefig(
             OUTPUT_FILE_LOCATION
-            + OUTPUT_DETAILS
-            + f"_time_series_{self.input_parameters.dataset_name}_{stat}.png",
+            + f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}"
+            + f"_time_series_{dataset_name}_{stat}.png",
             bbox_inches="tight",
         )
 
@@ -172,16 +177,14 @@ def sort_dataframe_by_largest_values(input_df: pd.DataFrame) -> pd.DataFrame:
 
 league_input_parameters = PlotterInputRepresentation(
     dataset_name="league_standings",
-    time_series_stats_list=["w", "win-total-ratio"],
-    time_series_stats_int_dict={"w": True, "win-total-ratio": False},
+    time_series_stats_is_int={"w": True, "win-total-ratio": False},
     n_best=-1,
 )
 
 
 batter_input_parameters = PlotterInputRepresentation(
     dataset_name="batter_stats",
-    time_series_stats_list=["homeRuns", "obp"],
-    time_series_stats_int_dict={"homeRuns": True, "obp": False},
+    time_series_stats_is_int={"homeRuns": True, "obp": False},
     n_best=10,
 )
 
