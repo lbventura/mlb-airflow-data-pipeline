@@ -37,22 +37,6 @@ class TeamStats:
     def __init__(self, player_names_per_team: list[str]):
         self.player_names_per_team = player_names_per_team
 
-    def get_stats_type(self, is_season_stats: bool = IS_SEASON_STATS) -> str:
-        if is_season_stats:
-            stats_type = "season"
-        else:
-            stats_type = "career"
-        return stats_type
-
-    def _set_player_name_ids(self) -> None:
-        player_name_ids = {
-            player_name: statsapi.lookup_player(player_name, season=SEASON_YEAR)[0][
-                "id"
-            ]
-            for player_name in self.player_names_per_team
-        }
-        self.player_name_ids = player_name_ids
-
     def get_team_stats(self) -> tuple[pd.DataFrame, dict, dict]:
 
         team_stats_json = {}
@@ -83,30 +67,26 @@ class TeamStats:
 
         return team_player_stats, active_player_name_ids, inactive_player_info
 
+    def get_stats_type(self, is_season_stats: bool = IS_SEASON_STATS) -> str:
+        if is_season_stats:
+            stats_type = "season"
+        else:
+            stats_type = "career"
+        return stats_type
+
+    def _set_player_name_ids(self) -> None:
+        player_name_ids = {
+            player_name: statsapi.lookup_player(player_name, season=SEASON_YEAR)[0][
+                "id"
+            ]
+            for player_name in self.player_names_per_team
+        }
+        self.player_name_ids = player_name_ids
+
 
 class DataExtractor:
     def __init__(self, league_name: str = LEAGUE_NAME) -> None:
         self.league_name = league_name
-
-    def set_league_division_standings(self) -> None:
-        """
-        Creates the league and division standings for one of the two leagues in MLB.
-        """
-
-        league_number = LEAGUE_MAPPING[self.league_name]
-        league_list = []
-
-        for division in LEAGUE_DIVISION_MAPPING[league_number]:
-            division_results: pd.DataFrame = pd.DataFrame(
-                statsapi.standings_data(league_number, season=SEASON_YEAR)[division]["teams"]  # type: ignore
-            )
-            league_list.append(division_results)
-
-        league_standings = pd.concat(league_list, axis=0)
-
-        (league_standings).to_csv(DATA_FILE_LOCATION + LEAGUE_STANDINGS_FILE_NAME)
-
-        self.league_standings = league_standings
 
     def set_team_ids_and_names(self) -> None:
         """
@@ -120,32 +100,42 @@ class DataExtractor:
             record["team_id"]: record["name"] for record in team_ids_names
         }
 
-    def set_league_team_rosters_player_names(self) -> None:
+    def get_player_stats_per_league(
+        self,
+    ) -> tuple[pd.DataFrame, dict, list]:
         """
-        Uses _set_league_division_standings to generate the player names for each team roster.
+        Returns player individual stats per league.
 
         Returns:
-            dict: Dictionary where keys are team_ids and the values are player names of each roster
+            pd.DataFrame: Containing stats for a given league
+            dict: Keys are team names and values are inactive players
+            list: List of teams for which we failed to get stats
         """
-        self.set_league_division_standings()
-        team_ids = self.league_standings["team_id"].values
+        league_player_team_stats = {}
+        inactive_players_per_team = {}
+        failed_teams = []
 
-        league_team_rosters = {
-            team_id: statsapi.roster(team_id, season=SEASON_YEAR).split("\n")
-            for team_id in team_ids
-        }
-
-        league_team_rosters_player_names = {
-            team_id: [
-                " ".join(player.split(" ")[-2:])
-                for player in league_team_rosters[team_id]
-            ]
-            for team_id in team_ids
-        }
-
-        self.league_team_rosters_player_names: dict[
-            int, list[str]
-        ] = league_team_rosters_player_names  # type: ignore
+        for team_number in self.league_team_rosters_player_names.keys():
+            try:
+                (
+                    team_player_stats,
+                    inactive_player_info,
+                ) = self.get_player_stats_dataframe_per_team(team_number)
+                league_player_team_stats[team_number] = team_player_stats
+                if inactive_player_info:
+                    inactive_players_per_team[team_number] = inactive_player_info
+                successful_team_name = self.team_id_name_mapping[team_number]
+                logging.info(
+                    f"Extraction succeeded for the team {successful_team_name}, team number {team_number}"
+                )
+            except:
+                failed_team_name = self.team_id_name_mapping[team_number]
+                failed_teams.append(failed_team_name)
+                logging.exception(
+                    f"Extraction succeeded for the team {failed_team_name}, team number {team_number}"
+                )
+        player_stats = pd.concat(league_player_team_stats.values())
+        return player_stats, inactive_players_per_team, failed_teams
 
     def get_player_stats_dataframe_per_team(
         self,
@@ -194,42 +184,49 @@ class DataExtractor:
             inactive_player_info,
         )
 
-    def get_player_stats_per_league(
-        self,
-    ) -> tuple[pd.DataFrame, dict, list]:
+    def set_league_team_rosters_player_names(self) -> None:
         """
-        Returns player individual stats per league.
-
-        Returns:
-            pd.DataFrame: Containing stats for a given league
-            dict: Keys are team names and values are inactive players
-            list: List of teams for which we failed to get stats
+        Uses set_league_division_standings to generate the player names for each team roster.
         """
-        league_player_team_stats = {}
-        inactive_players_per_team = {}
-        failed_teams = []
+        self.set_league_division_standings()
+        team_ids = self.league_standings["team_id"].values
 
-        for team_number in self.league_team_rosters_player_names.keys():
-            try:
-                (
-                    team_player_stats,
-                    inactive_player_info,
-                ) = self.get_player_stats_dataframe_per_team(team_number)
-                league_player_team_stats[team_number] = team_player_stats
-                if inactive_player_info:
-                    inactive_players_per_team[team_number] = inactive_player_info
-                successful_team_name = self.team_id_name_mapping[team_number]
-                logging.info(
-                    f"Extraction succeeded for the team {successful_team_name}, team number {team_number}"
-                )
-            except:
-                failed_team_name = self.team_id_name_mapping[team_number]
-                failed_teams.append(failed_team_name)
-                logging.exception(
-                    f"Extraction succeeded for the team {failed_team_name}, team number {team_number}"
-                )
-        player_stats = pd.concat(league_player_team_stats.values())
-        return player_stats, inactive_players_per_team, failed_teams
+        league_team_rosters = {
+            team_id: statsapi.roster(team_id, season=SEASON_YEAR).split("\n")
+            for team_id in team_ids
+        }
+
+        league_team_rosters_player_names = {
+            team_id: [
+                " ".join(player.split(" ")[-2:])
+                for player in league_team_rosters[team_id]
+            ]
+            for team_id in team_ids
+        }
+
+        self.league_team_rosters_player_names: dict[
+            int, list[str]
+        ] = league_team_rosters_player_names  # type: ignore
+
+    def set_league_division_standings(self) -> None:
+        """
+        Creates the league and division standings for one of the two leagues in MLB.
+        """
+
+        league_number = LEAGUE_MAPPING[self.league_name]
+        league_list = []
+
+        for division in LEAGUE_DIVISION_MAPPING[league_number]:
+            division_results: pd.DataFrame = pd.DataFrame(
+                statsapi.standings_data(league_number, season=SEASON_YEAR)[division]["teams"]  # type: ignore
+            )
+            league_list.append(division_results)
+
+        league_standings = pd.concat(league_list, axis=0)
+
+        (league_standings).to_csv(DATA_FILE_LOCATION + LEAGUE_STANDINGS_FILE_NAME)
+
+        self.league_standings = league_standings
 
 
 if __name__ == "__main__":

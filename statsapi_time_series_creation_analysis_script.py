@@ -1,7 +1,6 @@
 import glob
-import uuid
 from datetime import datetime
-from typing import Dict
+from pydantic import BaseModel
 
 import matplotlib
 import matplotlib.pyplot as plt
@@ -23,13 +22,132 @@ with open(LEAGUE_NAME_LOCATION, "r") as text_file:
     LEAGUE_NAME = text_file.readline().strip()
 
 
+class PlotterInputRepresentation(BaseModel):
+    dataset_name: str
+    time_series_stats_is_int: dict[str, bool]
+    n_best: int
+
+
+class PlotGenerator:
+    def __init__(self, input_parameters: PlotterInputRepresentation):
+        self.input_parameters = input_parameters
+        self.time_series_datasets: dict[str, list] = {
+            stat: [] for stat in self.input_parameters.time_series_stats_is_int.keys()
+        }
+        self.figure: plt.figure.Figure
+        self.axes: plt.axes.Axes
+
+    def get_time_series_stats_plots(self):
+        """Produces time series plots for either team or player stats."""
+
+        self.set_time_series()
+
+        for stat in self.time_series:
+
+            time_series_stat_df: pd.DataFrame = self.time_series[stat].dropna(axis=1)
+
+            is_int = self.input_parameters.time_series_stats_is_int[stat]
+            if is_int:
+                time_series_stat_df.astype(int)
+
+            self._set_time_series_plot(time_series_stat_df, stat)
+
+    def set_time_series(self) -> None:
+        """Imports all the files from a particular dataset, extracting time series
+        for the variables specified in TIME_SERIES_VARIABLES_LIST.
+
+        DATASET_NAME can be ["full_player_stats", "league_standings", "batter_stats"].
+
+        """
+
+        filenames = self._get_filenames()
+
+        for file in filenames:
+            self._generate_data_from_file(file=file)
+
+        time_series: dict[str, pd.DataFrame] = self._get_time_series()
+        self.time_series = time_series
+
+    def _generate_data_from_file(self, file: str) -> None:
+
+        date = file.split("_")[2]
+        date_df = pd.read_csv(file)
+        date_df.rename(columns={"playername": "name"}, inplace=True)
+
+        dataset_name = self.input_parameters.dataset_name
+        if dataset_name == "league_standings":
+            date_df["win-total-ratio"] = date_df["w"] / (date_df["w"] + date_df["l"])
+
+        stats = self.input_parameters.time_series_stats_is_int.keys()
+        for stat in stats:
+            self.time_series_datasets[stat].append(
+                sorting_and_index_reset(date_df[["name", stat]], date)
+            )
+
+    def _get_time_series(self) -> dict[str, pd.DataFrame]:
+
+        time_series: dict = {}
+
+        days = self.time_series_datasets.keys()
+        for day in days:
+            time_series[day] = pd.concat(self.time_series_datasets[day]).drop(
+                columns=["index"]
+            )
+            time_series[day].index = pd.to_datetime(time_series[day].index)
+
+        return time_series
+
+    def _set_time_series_plot(self, dataframe: pd.DataFrame, stat: str) -> None:
+
+        self.figure, self.axes = plt.subplots(figsize=(20, 6))
+
+        self._generate_figure_from_dataframe(dataframe=dataframe)
+        self._format_axes(stat=stat)
+
+        dataset_name = self.input_parameters.dataset_name
+
+        plt.savefig(
+            OUTPUT_FILE_LOCATION
+            + f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}"
+            + f"_time_series_{dataset_name}_{stat}.png",
+            bbox_inches="tight",
+        )
+
+    def _generate_figure_from_dataframe(self, dataframe: pd.DataFrame):
+        sort_dataframe_by_largest_values(dataframe).iloc[
+            :, : self.input_parameters.n_best
+        ].plot(ax=self.axes, style=".", linewidth=5, markersize=12, xlabel="", alpha=1)
+
+    def _format_axes(self, stat: str):
+        self.axes.set_ylabel(stat)
+        self.axes.yaxis.set_major_locator(
+            MaxNLocator(integer=self.input_parameters.time_series_stats_is_int[stat])
+        )
+        self.axes.legend(
+            loc="upper center",
+            ncol=4,
+            fontsize=12,
+            bbox_to_anchor=(0.5, -0.2),
+            frameon=False,
+        )
+
+    def _get_filenames(self) -> list[str]:
+        filenames = sorted(
+            glob.glob(
+                DATA_FILE_LOCATION
+                + f"{LEAGUE_NAME}_*_{self.input_parameters.dataset_name}_df.csv"
+            )
+        )
+        return filenames
+
+
 def sorting_and_index_reset(input_df: pd.DataFrame, date: str) -> pd.DataFrame:
     """Sorting by team name, adding date as a column and then setting it as
     an index
 
     Args:
         input_df (pd.DataFrame)
-
+        date (str)
     Returns:
         pd.DataFrame
     """
@@ -41,7 +159,7 @@ def sorting_and_index_reset(input_df: pd.DataFrame, date: str) -> pd.DataFrame:
         .T
     )
 
-    # dropping the duplicate column for Luis Garcia
+    # dropping the duplicate columns
     mod_input_df = mod_input_df.loc[:, ~mod_input_df.columns.duplicated()]  # type: ignore
 
     mod_input_df["date"] = date
@@ -50,64 +168,12 @@ def sorting_and_index_reset(input_df: pd.DataFrame, date: str) -> pd.DataFrame:
     return mod_input_df
 
 
-def creating_time_series(
-    DATASET_NAME: str,
-    LEAGUE_NAME: str,
-    TIME_SERIES_VARIABLES_LIST: list,
-) -> tuple[dict, dict]:
-    """Imports all the files from a particular dataset, extracting time series
-    for the variables specified in TIME_SERIES_VARIABLES_LIST.
-
-    DATASET_NAME can be ["full_player_stats", "league_standings", "batter_stats"].
-
-    Returns:
-        tuple
-
-    """
-
-    filenames = sorted(
-        glob.glob(DATA_FILE_LOCATION + f"{LEAGUE_NAME}_*_{DATASET_NAME}_df.csv")
-    )
-
-    league_dataset_dict = {}
-
-    time_series_data_dict: Dict[str, list] = {
-        stat: [] for stat in TIME_SERIES_VARIABLES_LIST
-    }
-
-    for file in filenames:
-
-        date = file.split("_")[2]
-        date_df = pd.read_csv(file)
-        date_df.rename(columns={"playername": "name"}, inplace=True)
-
-        if DATASET_NAME == "league_standings":
-            date_df["win-total-ratio"] = date_df["w"] / (date_df["w"] + date_df["l"])
-
-        league_dataset_dict[date] = date_df
-
-        for stat in TIME_SERIES_VARIABLES_LIST:
-            time_series_data_dict[stat].append(
-                sorting_and_index_reset(date_df[["name", stat]], date)
-            )
-
-    time_series_dict = {}
-
-    for key in time_series_data_dict.keys():
-        time_series_dict[key] = pd.concat(time_series_data_dict[key]).drop(
-            columns=["index"]
-        )
-        time_series_dict[key].index = pd.to_datetime(time_series_dict[key].index)
-
-    return (league_dataset_dict, time_series_dict)
-
-
 def sort_dataframe_by_largest_values(input_df: pd.DataFrame) -> pd.DataFrame:
     """
     Sorts dataframe by the largest values of the last row.
 
     Returns:
-        pd.DataFrame: _description_
+        pd.DataFrame
 
     """
     return input_df[
@@ -115,56 +181,22 @@ def sort_dataframe_by_largest_values(input_df: pd.DataFrame) -> pd.DataFrame:
     ]
 
 
-def time_series_stats_plotter(team_stats: bool = True):
-    """Produces time series plots for either team or player stats."""
-
-    if team_stats:
-        DATASET_NAME = "league_standings"
-        time_series_stats_list = ["w", "win-total-ratio"]
-        time_series_stats_int_dict = {"w": True, "win-total-ratio": False}
-        N_BEST = -1
-
-    else:
-        DATASET_NAME = "batter_stats"
-        time_series_stats_list = ["homeRuns", "obp"]
-        time_series_stats_int_dict = {"homeRuns": True, "obp": False}
-        N_BEST = 10
-
-    _, time_series_stats_dict = creating_time_series(
-        DATASET_NAME, LEAGUE_NAME, time_series_stats_list
-    )
-
-    for stat in time_series_stats_dict:
-
-        time_series_stat_df = time_series_stats_dict[stat].dropna(axis=1)
-
-        if time_series_stats_int_dict[stat]:
-            time_series_stat_df.astype(int)
-
-        fig, ax = plt.subplots(figsize=(20, 6))
-        sort_dataframe_by_largest_values(time_series_stat_df).iloc[:, :N_BEST].plot(
-            ax=ax, style=".", linewidth=5, markersize=12, xlabel="", alpha=1
-        )
-        ax.set_ylabel(stat)
-        ax.yaxis.set_major_locator(
-            MaxNLocator(integer=time_series_stats_int_dict[stat])
-        )
-        ax.legend(
-            loc="upper center",
-            ncol=4,
-            fontsize=12,
-            bbox_to_anchor=(0.5, -0.2),
-            frameon=False,
-        )
-        OUTPUT_DETAILS = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}"
-        plt.savefig(
-            OUTPUT_FILE_LOCATION
-            + OUTPUT_DETAILS
-            + f"_time_series_{DATASET_NAME}_{stat}.png",
-            bbox_inches="tight",
-        )
-        # plt.show()
+league_input_parameters = PlotterInputRepresentation(
+    dataset_name="league_standings",
+    time_series_stats_is_int={"w": True, "win-total-ratio": False},
+    n_best=-1,
+)
 
 
-time_series_stats_plotter(team_stats=True)
-time_series_stats_plotter(team_stats=False)
+batter_input_parameters = PlotterInputRepresentation(
+    dataset_name="batter_stats",
+    time_series_stats_is_int={"homeRuns": True, "obp": False},
+    n_best=10,
+)
+
+
+if __name__ == "__main__":
+    league_plot_generator = PlotGenerator(input_parameters=league_input_parameters)
+    league_plot_generator.get_time_series_stats_plots()
+    batter_plot_generator = PlotGenerator(input_parameters=batter_input_parameters)
+    batter_plot_generator.get_time_series_stats_plots()
