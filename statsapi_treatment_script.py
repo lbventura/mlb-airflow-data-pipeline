@@ -37,27 +37,10 @@ class DataTreater:
     def __init__(self, input_parameters: DataTreaterInputRepresentation):
         self.input_parameters = input_parameters
 
-    def get_input_data(self) -> pd.DataFrame:
-        input_data = pd.read_csv(self.input_parameters.path_to_input_data, index_col=0)
-        logging.info(f"Data input was successful")
-        return input_data
-
-    def get_subset_data(self) -> pd.DataFrame:
-        intermediate_data = self.get_input_data()[
-            self.input_parameters.subset_columns
-        ].dropna()
-        logging.info(
-            f"The set of columns for this dataset is {self.input_parameters.subset_columns}"
-        )
-        logging.info(f"Creating sub-dataset columns was successful")
-        return intermediate_data
-
-    def get_filter_data(self) -> pd.DataFrame:
-        filtered_data = filter_data(
-            self.get_subset_data(), self.input_parameters.filter_conditions_dict
-        )
-        logging.info(f"Filtering data was successful")
-        return filtered_data
+    def get_output_data_file(self):
+        (self.output_data).to_csv(self.input_parameters.path_to_output_data)  # type: ignore
+        logging.info(f"Generating output file was successful")
+        return self
 
     def set_output_data(self) -> None:
 
@@ -75,10 +58,27 @@ class DataTreater:
 
         self.output_data = filtered_data
 
-    def get_output_data_file(self):
-        (self.output_data).to_csv(self.input_parameters.path_to_output_data)  # type: ignore
-        logging.info(f"Generating output file was successful")
-        return self
+    def get_filter_data(self) -> pd.DataFrame:
+        filtered_data = filter_data(
+            self.get_subset_data(), self.input_parameters.filter_conditions_dict
+        )
+        logging.info(f"Filtering data was successful")
+        return filtered_data
+
+    def get_subset_data(self) -> pd.DataFrame:
+        intermediate_data = self.get_input_data()[
+            self.input_parameters.subset_columns
+        ].dropna()
+        logging.info(
+            f"The set of columns for this dataset is {self.input_parameters.subset_columns}"
+        )
+        logging.info(f"Creating sub-dataset columns was successful")
+        return intermediate_data
+
+    def get_input_data(self) -> pd.DataFrame:
+        input_data = pd.read_csv(self.input_parameters.path_to_input_data, index_col=0)
+        logging.info(f"Data input was successful")
+        return input_data
 
 
 def filter_data(input_df: pd.DataFrame, conditions_dict: dict) -> pd.DataFrame:
