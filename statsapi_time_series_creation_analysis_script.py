@@ -35,6 +35,8 @@ class PlotGenerator:
         self.time_series_datasets: dict[str, list] = {
             stat: [] for stat in self.input_parameters.time_series_stats_is_int.keys()
         }
+        self.figure: plt.figure.Figure
+        self.axes: plt.axes.Axes
 
     def get_time_series_stats_plots(self):
         """Produces time series plots for either team or player stats."""
@@ -100,21 +102,10 @@ class PlotGenerator:
 
     def _set_time_series_plot(self, dataframe: pd.DataFrame, stat: str) -> None:
 
-        fig, ax = plt.subplots(figsize=(20, 6))
-        sort_dataframe_by_largest_values(dataframe).iloc[
-            :, : self.input_parameters.n_best
-        ].plot(ax=ax, style=".", linewidth=5, markersize=12, xlabel="", alpha=1)
-        ax.set_ylabel(stat)
-        ax.yaxis.set_major_locator(
-            MaxNLocator(integer=self.input_parameters.time_series_stats_is_int[stat])
-        )
-        ax.legend(
-            loc="upper center",
-            ncol=4,
-            fontsize=12,
-            bbox_to_anchor=(0.5, -0.2),
-            frameon=False,
-        )
+        self.figure, self.axes = plt.subplots(figsize=(20, 6))
+
+        self._generate_figure_from_dataframe(dataframe=dataframe)
+        self._format_axes(stat=stat)
 
         dataset_name = self.input_parameters.dataset_name
 
@@ -123,6 +114,24 @@ class PlotGenerator:
             + f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}"
             + f"_time_series_{dataset_name}_{stat}.png",
             bbox_inches="tight",
+        )
+
+    def _generate_figure_from_dataframe(self, dataframe: pd.DataFrame):
+        sort_dataframe_by_largest_values(dataframe).iloc[
+            :, : self.input_parameters.n_best
+        ].plot(ax=self.axes, style=".", linewidth=5, markersize=12, xlabel="", alpha=1)
+
+    def _format_axes(self, stat: str):
+        self.axes.set_ylabel(stat)
+        self.axes.yaxis.set_major_locator(
+            MaxNLocator(integer=self.input_parameters.time_series_stats_is_int[stat])
+        )
+        self.axes.legend(
+            loc="upper center",
+            ncol=4,
+            fontsize=12,
+            bbox_to_anchor=(0.5, -0.2),
+            frameon=False,
         )
 
     def _get_filenames(self) -> list[str]:
