@@ -31,7 +31,6 @@ class PlotterInputRepresentation(BaseModel):
 class PlotGenerator:
     def __init__(self, input_parameters: PlotterInputRepresentation):
         self.input_parameters = input_parameters
-        self.league_datasets: dict = {}
         self.time_series_datasets: dict[str, list] = {
             stat: [] for stat in self.input_parameters.time_series_stats_is_int.keys()
         }
@@ -78,8 +77,6 @@ class PlotGenerator:
         dataset_name = self.input_parameters.dataset_name
         if dataset_name == "league_standings":
             date_df["win-total-ratio"] = date_df["w"] / (date_df["w"] + date_df["l"])
-
-        self.league_datasets[date] = date_df
 
         stats = self.input_parameters.time_series_stats_is_int.keys()
         for stat in stats:
@@ -150,7 +147,7 @@ def sorting_and_index_reset(input_df: pd.DataFrame, date: str) -> pd.DataFrame:
 
     Args:
         input_df (pd.DataFrame)
-
+        date (str)
     Returns:
         pd.DataFrame
     """
@@ -176,7 +173,7 @@ def sort_dataframe_by_largest_values(input_df: pd.DataFrame) -> pd.DataFrame:
     Sorts dataframe by the largest values of the last row.
 
     Returns:
-        pd.DataFrame: _description_
+        pd.DataFrame
 
     """
     return input_df[
