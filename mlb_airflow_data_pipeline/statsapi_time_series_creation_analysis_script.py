@@ -10,7 +10,7 @@ from matplotlib.ticker import MaxNLocator
 DATE_TIME_EXECUTION = datetime.today().strftime("%Y-%m-%d")
 
 
-from statsapi_parameters_script import (
+from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     DATA_FILE_LOCATION,
     LEAGUE_NAME_LOCATION,
     OUTPUT_FILE_LOCATION,
