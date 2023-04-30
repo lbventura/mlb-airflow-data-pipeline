@@ -4,7 +4,7 @@ import pandas as pd
 import pandas as pd
 import statsapi
 
-from statsapi_parameters_script import (
+from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     DATA_FILE_LOCATION,
     IS_SEASON_STATS,
     LEAGUE_DIVISION_MAPPING,
@@ -33,13 +33,27 @@ def _insert_col_in_first_position(
     return dataframe
 
 
+def _extract_player_name(player: str) -> str:
+    player_data: list = player.split(" ")
+    return " ".join(player_data[-2:])
+
+
+def _generate_player_stats(player_stats_str: list[str]) -> dict:
+    player_stats = {
+        stat.split(": ")[0]: stat.split(": ")[1]
+        for stat in player_stats_str
+        if ":" in stat
+    }
+    return player_stats
+
+
 class TeamStats:
     def __init__(self, player_names_per_team: list[str]):
         self.player_names_per_team = player_names_per_team
+        self.team_stats: dict = {}
 
     def get_team_stats(self) -> tuple[pd.DataFrame, dict, dict]:
 
-        team_stats_json = {}
         active_player_name_ids = {}
         inactive_player_info = {}
 
@@ -47,32 +61,16 @@ class TeamStats:
 
         for name, id in self.player_name_ids.items():
             try:
-                team_stats_json[name] = statsapi.player_stats(
+                self.team_stats[name] = statsapi.player_stats(
                     id, type=self.get_stats_type()
                 ).split("\n")
                 active_player_name_ids[name] = id
             except TypeError:
                 inactive_player_info[name] = id
 
-        team_player_stats = pd.DataFrame(
-            data={
-                self.player_name_ids[player]: {
-                    stat.split(": ")[0]: stat.split(": ")[1]
-                    for stat in team_stats_json[player]
-                    if ":" in stat
-                }
-                for player in team_stats_json.keys()
-            }
-        ).T
+        team_player_stats = self._get_team_player_stats()
 
         return team_player_stats, active_player_name_ids, inactive_player_info
-
-    def get_stats_type(self, is_season_stats: bool = IS_SEASON_STATS) -> str:
-        if is_season_stats:
-            stats_type = "season"
-        else:
-            stats_type = "career"
-        return stats_type
 
     def _set_player_name_ids(self) -> None:
         player_name_ids = {
@@ -82,6 +80,22 @@ class TeamStats:
             for player_name in self.player_names_per_team
         }
         self.player_name_ids = player_name_ids
+
+    def _get_team_player_stats(self) -> pd.DataFrame:
+        team_player_stats = pd.DataFrame(
+            data={
+                self.player_name_ids[player]: _generate_player_stats(player_stats_str)
+                for player, player_stats_str in self.team_stats.items()
+            }
+        ).T
+        return team_player_stats
+
+    def get_stats_type(self, is_season_stats: bool = IS_SEASON_STATS) -> str:
+        if is_season_stats:
+            stats_type = "season"
+        else:
+            stats_type = "career"
+        return stats_type
 
 
 class DataExtractor:
@@ -198,8 +212,7 @@ class DataExtractor:
 
         league_team_rosters_player_names = {
             team_id: [
-                " ".join(player.split(" ")[-2:])
-                for player in league_team_rosters[team_id]
+                _extract_player_name(player) for player in league_team_rosters[team_id]
             ]
             for team_id in team_ids
         }

@@ -5,7 +5,7 @@ import pandas as pd
 
 from pydantic import BaseModel
 
-from statsapi_parameters_script import (
+from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     BATTER_DATA_FILE_NAME,
     DATA_FILE_LOCATION,
     DATA_FILTER_THRESHOLD,

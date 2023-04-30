@@ -4,7 +4,7 @@ import pandas as pd
 
 matplotlib.use("Agg")
 
-from statsapi_parameters_script import (
+from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     BATTER_DATA_FILE_NAME,
     DATA_FILE_LOCATION,
     OUTPUT_DETAILS,
