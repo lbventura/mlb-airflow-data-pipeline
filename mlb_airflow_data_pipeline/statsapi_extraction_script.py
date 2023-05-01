@@ -1,7 +1,6 @@
 import logging
 import pandas as pd
 
-import pandas as pd
 import statsapi
 
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
@@ -102,18 +101,6 @@ class DataExtractor:
     def __init__(self, league_name: str = LEAGUE_NAME) -> None:
         self.league_name = league_name
 
-    def set_team_ids_and_names(self) -> None:
-        """
-        Creates a dictionary where the keys are the team_ids and values are the team names.
-        """
-        team_ids_names_df = self.league_standings[["team_id", "name"]]
-        team_ids_names_df.set_index("team_id")
-        team_ids_names = team_ids_names_df.to_dict(orient="records")
-
-        self.team_id_name_mapping = {
-            record["team_id"]: record["name"] for record in team_ids_names
-        }
-
     def get_player_stats_per_league(
         self,
     ) -> tuple[pd.DataFrame, dict, list]:
@@ -198,6 +185,35 @@ class DataExtractor:
             inactive_player_info,
         )
 
+    def set_team_ids_and_names(self) -> None:
+        """
+        Creates a dictionary where the keys are the team_ids and values are the team names.
+        """
+        team_ids_names_df = self.league_standings[["team_id", "name"]]
+        team_ids_names_df.set_index("team_id")
+        team_ids_names = team_ids_names_df.to_dict(orient="records")
+
+        self.team_id_name_mapping: dict[int, str] = {
+            record["team_id"]: record["name"] for record in team_ids_names
+        }
+
+    def set_league_division_standings(self) -> None:
+        """
+        Creates the league and division standings for one of the two leagues in MLB.
+        """
+
+        league_number = LEAGUE_MAPPING[self.league_name]
+        league_list = []
+
+        for division in LEAGUE_DIVISION_MAPPING[league_number]:
+            division_results: pd.DataFrame = pd.DataFrame(
+                statsapi.standings_data(league_number, season=SEASON_YEAR)[division]["teams"]  # type: ignore
+            )
+            league_list.append(division_results)
+
+        league_standings = pd.concat(league_list, axis=0)
+        self.league_standings = league_standings
+
     def set_league_team_rosters_player_names(self) -> None:
         """
         Uses set_league_division_standings to generate the player names for each team roster.
@@ -221,26 +237,6 @@ class DataExtractor:
             int, list[str]
         ] = league_team_rosters_player_names  # type: ignore
 
-    def set_league_division_standings(self) -> None:
-        """
-        Creates the league and division standings for one of the two leagues in MLB.
-        """
-
-        league_number = LEAGUE_MAPPING[self.league_name]
-        league_list = []
-
-        for division in LEAGUE_DIVISION_MAPPING[league_number]:
-            division_results: pd.DataFrame = pd.DataFrame(
-                statsapi.standings_data(league_number, season=SEASON_YEAR)[division]["teams"]  # type: ignore
-            )
-            league_list.append(division_results)
-
-        league_standings = pd.concat(league_list, axis=0)
-
-        (league_standings).to_csv(DATA_FILE_LOCATION + LEAGUE_STANDINGS_FILE_NAME)
-
-        self.league_standings = league_standings
-
 
 if __name__ == "__main__":
 
@@ -249,6 +245,11 @@ if __name__ == "__main__":
     data_extractor = DataExtractor(league_name=LEAGUE_NAME)
 
     data_extractor.set_league_team_rosters_player_names()
+
+    (data_extractor.league_standings).to_csv(
+        DATA_FILE_LOCATION + LEAGUE_STANDINGS_FILE_NAME
+    )
+
     data_extractor.set_team_ids_and_names()
 
     (
