@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from pydantic import BaseModel
+from typing import Optional
 
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     BATTER_DATA_FILE_NAME,
@@ -26,7 +27,7 @@ logging.basicConfig(
 
 class DataTreaterInputRepresentation(BaseModel):
     path_to_input_data: str
-    path_to_output_data: str
+    path_to_output_data: Optional[str] = None
     subset_columns: list
     filter_conditions_dict: dict
     custom_features: dict
@@ -66,9 +67,7 @@ class DataTreater:
         return filtered_data
 
     def get_subset_data(self) -> pd.DataFrame:
-        intermediate_data = self.get_input_data()[
-            self.input_parameters.subset_columns
-        ].dropna()
+        intermediate_data = self.get_input_data()[self.input_parameters.subset_columns]
         logging.info(
             f"The set of columns for this dataset is {self.input_parameters.subset_columns}"
         )

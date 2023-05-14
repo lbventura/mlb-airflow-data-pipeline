@@ -7,7 +7,7 @@ LEAGUE_MAPPING = {"american_league": 103, "national_league": 104}
 
 LEAGUE_DIVISION_MAPPING = {103: [200, 201, 202], 104: [203, 204, 205]}
 
-SOURCE_LOCATION = os.path.abspath("mlb_airflow_data_pipeline")
+SOURCE_LOCATION = os.path.dirname(os.path.abspath(__file__))
 
 # setting "national_league" as the default league name
 LEAGUE_NAME = "national_league"
@@ -40,3 +40,90 @@ OUTPUT_DETAILS = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}"
 BATTER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_batter_stats_df.csv"
 PITCHER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_pitcher_stats_df.csv"
 DEFENDER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_defender_stats_df.csv"
+
+# list of expected output columns
+def expected_output_columns() -> list[str]:
+    return sorted(
+        [
+            "playername",
+            "gamesPlayed",
+            "gamesStarted",
+            "caughtStealing",
+            "stolenBases",
+            "stolenBasePercentage",
+            "assists",
+            "putOuts",
+            "errors",
+            "chances",
+            "fielding",
+            "rangeFactorPerGame",
+            "rangeFactorPer9Inn",
+            "innings",
+            "games",
+            "passedBall",
+            "doublePlays",
+            "triplePlays",
+            "catcherERA",
+            "catchersInterference",
+            "wildPitches",
+            "throwingErrors",
+            "pickoffs",
+            "groundOuts",
+            "airOuts",
+            "runs",
+            "doubles",
+            "triples",
+            "homeRuns",
+            "strikeOuts",
+            "baseOnBalls",
+            "intentionalWalks",
+            "hits",
+            "hitByPitch",
+            "avg",
+            "atBats",
+            "obp",
+            "slg",
+            "ops",
+            "groundIntoDoublePlay",
+            "numberOfPitches",
+            "plateAppearances",
+            "totalBases",
+            "rbi",
+            "leftOnBase",
+            "sacBunts",
+            "sacFlies",
+            "babip",
+            "groundOutsToAirouts",
+            "atBatsPerHomeRun",
+            "era",
+            "inningsPitched",
+            "wins",
+            "losses",
+            "saves",
+            "saveOpportunities",
+            "holds",
+            "blownSaves",
+            "earnedRuns",
+            "whip",
+            "battersFaced",
+            "outs",
+            "gamesPitched",
+            "completeGames",
+            "shutouts",
+            "strikes",
+            "strikePercentage",
+            "hitBatsmen",
+            "balks",
+            "winPercentage",
+            "pitchesPerInning",
+            "gamesFinished",
+            "strikeoutWalkRatio",
+            "strikeoutsPer9Inn",
+            "walksPer9Inn",
+            "hitsPer9Inn",
+            "runsScoredPer9",
+            "homeRunsPer9",
+            "inheritedRunners",
+            "inheritedRunnersScored",
+        ]
+    )
