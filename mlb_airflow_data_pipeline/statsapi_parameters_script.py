@@ -7,7 +7,7 @@ LEAGUE_MAPPING = {"american_league": 103, "national_league": 104}
 
 LEAGUE_DIVISION_MAPPING = {103: [200, 201, 202], 104: [203, 204, 205]}
 
-SOURCE_LOCATION = os.path.abspath("mlb_airflow_data_pipeline")
+SOURCE_LOCATION = os.path.dirname(os.path.abspath(__file__))
 
 # setting "national_league" as the default league name
 LEAGUE_NAME = "national_league"
