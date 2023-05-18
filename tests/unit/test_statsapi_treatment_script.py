@@ -1,15 +1,15 @@
 import pandas.api.types as pdtypes
 import os
-import pydantic
 import pytest
 
 
 from mlb_airflow_data_pipeline.statsapi_treatment_script import (
-    DataTreaterInputRepresentation,
     batting_stats_list,
     batter_custom_features_dict,
     batter_transformation_list,
     DataTreater,
+    DataTreaterInputRepresentation,
+    DataTreaterPaths,
 )
 
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -21,8 +21,11 @@ EXAMPLE_DATA_PATH = os.path.join(
 
 batter_filter_conditions_dict = {"plateAppearances": 100, "atBats": 50}
 
-batter_input_data_repr = DataTreaterInputRepresentation(
+batter_input_paths = DataTreaterPaths(
     path_to_input_data=EXAMPLE_DATA_PATH,
+)
+
+batter_input_data_repr = DataTreaterInputRepresentation(
     subset_columns=batting_stats_list,
     filter_conditions_dict=batter_filter_conditions_dict,
     custom_features=batter_custom_features_dict,
@@ -120,17 +123,6 @@ def object_features_list():
     ]
 
 
-def test_data_treater_input_representation():
-    # TODO: check that the input types are
-    # path_to_input_data: str
-    # path_to_output_data: Optional[str] = None
-    # subset_columns: list
-    # filter_conditions_dict: dict
-    # custom_features: dict
-    # transformation_list: list
-    assert 1 == 1
-
-
 @pytest.mark.parametrize(
     "is_numeric, feature_list",
     [(True, numeric_features_list()), (False, object_features_list())],
@@ -138,7 +130,9 @@ def test_data_treater_input_representation():
 def test_data_treater_input_data(is_numeric, feature_list):
     # temporary test until type conversion is implemented
     # checks that pd.read_csv type conversion is working as expected
-    batter_data_treater = DataTreater(batter_input_data_repr)
+    batter_data_treater = DataTreater(
+        data_paths=batter_input_paths, input_parameters=batter_input_data_repr
+    )
     output_df = batter_data_treater.get_input_data()
     output_df_is_numeric_columns = {
         col: pdtypes.is_numeric_dtype(output_df[col]) for col in output_df.columns
@@ -156,7 +150,9 @@ def test_data_treater_input_data(is_numeric, feature_list):
 
 
 def test_data_treater_filter_data():
-    batter_data_treater = DataTreater(batter_input_data_repr)
+    batter_data_treater = DataTreater(
+        data_paths=batter_input_paths, input_parameters=batter_input_data_repr
+    )
     output_df = batter_data_treater.get_filter_data()
 
     expected_output_shape = (90, 29)
