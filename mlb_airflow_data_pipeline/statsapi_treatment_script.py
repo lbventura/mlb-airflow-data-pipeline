@@ -6,13 +6,16 @@ import pandas as pd
 from pydantic import BaseModel
 
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
-    BATTER_DATA_FILE_NAME,
     DATA_FILE_LOCATION,
-    DATA_FILTER_THRESHOLD,
-    PITCHER_DATA_FILE_NAME,
-    PLAYER_DATA_FILE_NAME,
-    DEFENDER_DATA_FILE_NAME,
+    LEAGUE_NAME,
 )
+
+from mlb_airflow_data_pipeline.statsapi_extraction_script import (
+    DATE_TIME_EXECUTION,
+    PLAYER_DATA_FILE_NAME,
+)
+
+import argparse
 
 # creates a logger
 logging.basicConfig(
@@ -22,6 +25,38 @@ logging.basicConfig(
     level=logging.DEBUG,
     filemode="w",
 )
+
+
+parser = argparse.ArgumentParser(
+    description="Optional input arguments for treatment script",
+    formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+)
+
+parser.add_argument("--date", type=str)
+parser.add_argument("--league_name", type=str)
+
+args = parser.parse_args()
+config = vars(args)
+
+input_date = config.get("date")
+input_league_name = config.get("league_name")
+
+if input_date:
+    DATE_TIME_EXECUTION = config["date"]
+
+if input_league_name:
+    LEAGUE_NAME = config["league_name"]
+
+
+PLAYER_DATA_FILE_NAME = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}_full_player_stats_df.csv"
+
+DATA_FILTER_THRESHOLD = 0.6
+
+OUTPUT_DETAILS = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}"
+
+BATTER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_batter_stats_df.csv"
+PITCHER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_pitcher_stats_df.csv"
+DEFENDER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_defender_stats_df.csv"
 
 
 class DataTreaterInputRepresentation(BaseModel):

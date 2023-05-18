@@ -23,20 +23,6 @@ IS_SEASON_STATS = True
 with open(LEAGUE_NAME_LOCATION, "r") as text_file:
     LEAGUE_NAME = text_file.readline().strip()
 
-DATA_FILE_LOCATION = f"{SOURCE_LOCATION}/data/"
+DATA_FILE_LOCATION: str = f"{SOURCE_LOCATION}/data/"
 
 OUTPUT_FILE_LOCATION = f"{SOURCE_LOCATION}/output/"
-
-LEAGUE_STANDINGS_FILE_NAME = (
-    f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}_league_standings_df.csv"
-)
-
-PLAYER_DATA_FILE_NAME = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}_full_player_stats_df.csv"
-
-DATA_FILTER_THRESHOLD = 0.6
-
-OUTPUT_DETAILS = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}"
-
-BATTER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_batter_stats_df.csv"
-PITCHER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_pitcher_stats_df.csv"
-DEFENDER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_defender_stats_df.csv"
