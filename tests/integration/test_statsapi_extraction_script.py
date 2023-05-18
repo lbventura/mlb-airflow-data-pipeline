@@ -103,14 +103,14 @@ def national_league_team_ids() -> list[int]:
 
 
 @pytest.mark.parametrize(
-    "league_name,league_team_ids",
+    "league_name,expected_league_team_ids",
     [
         ("american_league", american_league_team_ids()),
         ("national_league", national_league_team_ids()),
     ],
 )
 def test_data_extractor_set_league_team_rosters_player_names(
-    league_name, league_team_ids
+    league_name, expected_league_team_ids
 ):
     data_extractor = DataExtractor(league_name)
 
@@ -118,7 +118,7 @@ def test_data_extractor_set_league_team_rosters_player_names(
 
     result = sorted(list(data_extractor.league_team_rosters_player_names.keys()))  # type: ignore
 
-    assert result == league_team_ids
+    assert result == expected_league_team_ids
 
 
 def american_league_team_names() -> list[str]:
@@ -141,8 +141,37 @@ def american_league_team_names() -> list[str]:
     ]
 
 
-def test_data_extractor_set_team_ids_and_names():
-    data_extractor = DataExtractor(league_name="american_league")
+def national_league_team_names() -> list[str]:
+    return [
+        "Arizona Diamondbacks",
+        "Chicago Cubs",
+        "Cincinnati Reds",
+        "Colorado Rockies",
+        "Los Angeles Dodgers",
+        "Washington Nationals",
+        "New York Mets",
+        "Pittsburgh Pirates",
+        "San Diego Padres",
+        "San Francisco Giants",
+        "St. Louis Cardinals",
+        "Philadelphia Phillies",
+        "Atlanta Braves",
+        "Miami Marlins",
+        "Milwaukee Brewers",
+    ]
+
+
+@pytest.mark.parametrize(
+    "league_name,expected_league_team_ids, expected_league_team_names",
+    [
+        ("american_league", american_league_team_ids(), american_league_team_names()),
+        ("national_league", national_league_team_ids(), national_league_team_names()),
+    ],
+)
+def test_data_extractor_set_team_ids_and_names(
+    league_name, expected_league_team_ids, expected_league_team_names
+):
+    data_extractor = DataExtractor(league_name=league_name)
 
     data_extractor.set_league_team_rosters_player_names()
     data_extractor.set_team_ids_and_names()
@@ -152,7 +181,5 @@ def test_data_extractor_set_team_ids_and_names():
         data_extractor.team_id_name_mapping[key] for key in ordered_team_ids
     ]
 
-    expected_team_ids = american_league_team_ids()
-    expected_team_names = american_league_team_names()
-    assert ordered_team_ids == expected_team_ids
-    assert ordered_team_names == expected_team_names
+    assert ordered_team_ids == expected_league_team_ids
+    assert ordered_team_names == expected_league_team_names

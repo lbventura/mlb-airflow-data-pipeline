@@ -13,6 +13,7 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     LEAGUE_NAME,
     DATE_TIME_EXECUTION,
     SEASON_YEAR,
+    expected_output_columns,
 )
 
 DATE_TIME_EXECUTION = datetime.today().strftime("%Y-%m-%d")
@@ -145,6 +146,9 @@ class DataExtractor:
                     f"Extraction succeeded for the team {failed_team_name}, team number {team_number}"
                 )
         player_stats = pd.concat(league_player_team_stats.values())
+
+        assert sorted(player_stats.columns.to_list()) == expected_output_columns()
+
         return player_stats, inactive_players_per_team, failed_teams
 
     def get_player_stats_dataframe_per_team(
