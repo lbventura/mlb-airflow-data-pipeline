@@ -40,9 +40,8 @@ logging.basicConfig(
 
 DATA_FILTER_THRESHOLD = 0.6
 
-# TODO: remove this duplication needed for the analysis script
-OUTPUT_DETAILS = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}"
 
+OUTPUT_DETAILS = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}"
 BATTER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_batter_stats_df.csv"
 
 
@@ -54,8 +53,7 @@ class DataTreaterPaths(BaseModel):
 class DataTreaterInputRepresentation(BaseModel):
     subset_columns: list
     filter_conditions_dict: dict
-    custom_features: dict
-    transformation_list: list
+    transformation_dict: dict
 
 
 class DataTreater:
@@ -76,17 +74,19 @@ class DataTreater:
 
         filtered_data = self.get_filter_data()
 
-        for function in self.input_parameters.transformation_list:
-            if function.__name__ in self.input_parameters.custom_features.keys():
+        transformation_dict = self.input_parameters.transformation_dict
+
+        for function in transformation_dict.keys():
+            if transformation_dict[function]:
                 filtered_data = function(
                     filtered_data,
-                    self.input_parameters.custom_features[function.__name__],
+                    transformation_dict[function],
                 )
             else:
                 filtered_data = function(filtered_data)
-            logging.info(f"Generating output data was successful")
 
         self.output_data = filtered_data
+        logging.info(f"Generating output data was successful")
 
     def get_filter_data(self) -> pd.DataFrame:
         filtered_data = filter_data(
@@ -162,23 +162,18 @@ batter_mean_norm_stats = [
     "difstrikeOutsbaseOnBalls",
 ]
 
-batter_custom_features_dict = {
-    "create_plate_appearance_normalization": batter_plate_norm_stats,
-    "create_mean_normalization": batter_mean_norm_stats,
-}
 
-batter_transformation_list = [
-    create_babip,
-    create_dif_strike_outs_base_on_balls,
-    create_plate_appearance_normalization,
-    create_mean_normalization,
-]
+batter_transformation_dict = {
+    create_babip: None,
+    create_dif_strike_outs_base_on_balls: None,
+    create_plate_appearance_normalization: batter_plate_norm_stats,
+    create_mean_normalization: batter_mean_norm_stats,
+}
 
 batter_input_data_repr = DataTreaterInputRepresentation(
     subset_columns=batting_stats_list,
     filter_conditions_dict=batter_filter_conditions_dict,
-    custom_features=batter_custom_features_dict,
-    transformation_list=batter_transformation_list,
+    transformation_dict=batter_transformation_dict,
 )
 
 # same thing for pitchers
@@ -196,21 +191,16 @@ pitcher_mean_norm_stats = [
     "homeRunsPer9",
 ]
 
-pitcher_custom_features_dict = {
-    "create_innings_pitched_normalization": pitcher_innings_norm_stats,
-    "create_mean_normalization": pitcher_mean_norm_stats,
-}
 
-pitcher_transformation_list = [
-    create_innings_pitched_normalization,
-    create_mean_normalization,
-]
+pitcher_transformation_dict = {
+    create_innings_pitched_normalization: pitcher_innings_norm_stats,
+    create_mean_normalization: pitcher_mean_norm_stats,
+}
 
 pitcher_input_data_repr = DataTreaterInputRepresentation(
     subset_columns=pitching_stats_list,
     filter_conditions_dict=pitcher_filter_conditions_dict,
-    custom_features=pitcher_custom_features_dict,
-    transformation_list=pitcher_transformation_list,
+    transformation_dict=pitcher_transformation_dict,
 )
 
 # same thing for defenders
@@ -231,19 +221,14 @@ defender_mean_norm_stats = [
     "fielding",
 ]
 
-defender_custom_features_dict = {
-    "create_mean_normalization": defender_mean_norm_stats,
+defender_transformation_dict = {
+    create_mean_normalization: defender_mean_norm_stats,
 }
-
-defender_transformation_list = [
-    create_mean_normalization,
-]
 
 defender_input_data_repr = DataTreaterInputRepresentation(
     subset_columns=defending_stats_list,
     filter_conditions_dict=defender_filter_conditions_dict,
-    custom_features=defender_custom_features_dict,
-    transformation_list=defender_transformation_list,
+    transformation_dict=defender_transformation_dict,
 )
 
 if __name__ == "__main__":

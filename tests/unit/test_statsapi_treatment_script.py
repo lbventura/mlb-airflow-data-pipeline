@@ -5,11 +5,15 @@ import pytest
 
 from mlb_airflow_data_pipeline.statsapi_treatment_script import (
     batting_stats_list,
-    batter_custom_features_dict,
-    batter_transformation_list,
+    batter_transformation_dict,
     DataTreater,
     DataTreaterInputRepresentation,
     DataTreaterPaths,
+)
+
+from mlb_airflow_data_pipeline.statsapi_feature_utils import (
+    create_plate_appearance_normalization,
+    create_mean_normalization,
 )
 
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
@@ -28,8 +32,7 @@ batter_input_paths = DataTreaterPaths(
 batter_input_data_repr = DataTreaterInputRepresentation(
     subset_columns=batting_stats_list,
     filter_conditions_dict=batter_filter_conditions_dict,
-    custom_features=batter_custom_features_dict,
-    transformation_list=batter_transformation_list,
+    transformation_dict=batter_transformation_dict,
 )
 
 
@@ -163,3 +166,38 @@ def test_data_treater_filter_data():
         < batter_filter_conditions_dict.get("plateAppearances")
     )
     assert not sum(output_df["atBats"] < batter_filter_conditions_dict.get("atBats"))
+
+
+def test_data_treater_set_output_data():
+    batter_data_treater = DataTreater(
+        data_paths=batter_input_paths, input_parameters=batter_input_data_repr
+    )
+    batter_data_treater.set_output_data()
+
+    actual_features = set(batter_data_treater.output_data.columns)
+
+    # for babip and difstrikeOutsbaseOnBalls, the test
+    # is less restrictive than below because these two features
+    # are used to generate other features below
+    assert "babip" in actual_features
+    assert "difstrikeOutsbaseOnBalls" in actual_features
+
+    expected_per_plate_features = {
+        ele + "perplateAppearance"
+        for ele in batter_input_data_repr.transformation_dict[
+            create_plate_appearance_normalization
+        ]
+    }
+
+    assert expected_per_plate_features.difference(actual_features) == set()
+
+    expected_normalized_features = {
+        ele + suffix
+        for ele in batter_input_data_repr.transformation_dict[create_mean_normalization]
+        for suffix in ["_mean", "_std", "_z_score"]
+    } | {
+        "normalized_" + ele
+        for ele in batter_input_data_repr.transformation_dict[create_mean_normalization]
+    }
+
+    assert expected_normalized_features.difference(actual_features) == set()
