@@ -65,12 +65,12 @@ class DataTreater:
         self.data_paths = data_paths
         self.input_parameters = input_parameters
 
-    def get_output_data_file(self):
-        (self.output_data).to_csv(self.data_paths.path_to_output_data)  # type: ignore
+    def set_output_data_file(self) -> None:
+        output_data = self.get_output_data()
+        output_data.to_csv(self.data_paths.path_to_output_data)  # type: ignore
         logging.info(f"Generating output file was successful")
-        return self
 
-    def set_output_data(self) -> None:
+    def get_output_data(self) -> pd.DataFrame:
 
         filtered_data = self.get_filter_data()
 
@@ -85,8 +85,8 @@ class DataTreater:
             else:
                 filtered_data = function(filtered_data)
 
-        self.output_data = filtered_data
         logging.info(f"Generating output data was successful")
+        return filtered_data
 
     def get_filter_data(self) -> pd.DataFrame:
         filtered_data = filter_data(
@@ -98,9 +98,8 @@ class DataTreater:
     def get_subset_data(self) -> pd.DataFrame:
         intermediate_data = self.get_input_data()[self.input_parameters.subset_columns]
         logging.info(
-            f"The set of columns for this dataset is {self.input_parameters.subset_columns}"
+            f"Creating sub-dataset columns - {self.input_parameters.subset_columns} - was successful"
         )
-        logging.info(f"Creating sub-dataset columns was successful")
         return intermediate_data
 
     def get_input_data(self) -> pd.DataFrame:
@@ -275,8 +274,7 @@ if __name__ == "__main__":
         data_paths=batter_input_paths, input_parameters=batter_input_data_repr
     )
 
-    batter_data_treater.set_output_data()
-    batter_data_treater.get_output_data_file()
+    batter_data_treater.set_output_data_file()
 
     logging.info("Data treatment for batters finished")
 
@@ -290,8 +288,7 @@ if __name__ == "__main__":
         data_paths=pitcher_input_paths, input_parameters=pitcher_input_data_repr
     )
 
-    pitcher_data_treater.set_output_data()
-    pitcher_data_treater.get_output_data_file()
+    pitcher_data_treater.set_output_data_file()
 
     logging.info("Data treatment for pitchers finished")
 
@@ -305,8 +302,7 @@ if __name__ == "__main__":
         data_paths=defender_input_paths, input_parameters=defender_input_data_repr
     )
 
-    defender_data_treater.set_output_data()
-    defender_data_treater.get_output_data_file()
+    defender_data_treater.set_output_data_file()
 
     logging.info("Data treatment for defenders finished")
 

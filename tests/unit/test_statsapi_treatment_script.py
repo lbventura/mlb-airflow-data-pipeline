@@ -168,13 +168,13 @@ def test_data_treater_filter_data():
     assert not sum(output_df["atBats"] < batter_filter_conditions_dict.get("atBats"))
 
 
-def test_data_treater_set_output_data():
+def test_data_treater_get_output_data():
     batter_data_treater = DataTreater(
         data_paths=batter_input_paths, input_parameters=batter_input_data_repr
     )
-    batter_data_treater.set_output_data()
+    output_data = batter_data_treater.get_output_data()
 
-    actual_features = set(batter_data_treater.output_data.columns)
+    actual_features = set(output_data.columns)
 
     # for babip and difstrikeOutsbaseOnBalls, the test
     # is less restrictive than below because these two features
