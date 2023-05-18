@@ -1,6 +1,8 @@
 import logging
 import pandas as pd
 
+from datetime import datetime
+
 import statsapi
 
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
@@ -9,11 +11,18 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     LEAGUE_DIVISION_MAPPING,
     LEAGUE_MAPPING,
     LEAGUE_NAME,
-    LEAGUE_STANDINGS_FILE_NAME,
-    PLAYER_DATA_FILE_NAME,
+    DATE_TIME_EXECUTION,
     SEASON_YEAR,
     expected_output_columns,
 )
+
+DATE_TIME_EXECUTION = datetime.today().strftime("%Y-%m-%d")
+
+LEAGUE_STANDINGS_FILE_NAME = (
+    f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}_league_standings_df.csv"
+)
+
+PLAYER_DATA_FILE_NAME = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}_full_player_stats_df.csv"
 
 # creates a logger
 logging.basicConfig(

@@ -5,10 +5,13 @@ import pandas as pd
 matplotlib.use("Agg")
 
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
-    BATTER_DATA_FILE_NAME,
     DATA_FILE_LOCATION,
-    OUTPUT_DETAILS,
     OUTPUT_FILE_LOCATION,
+)
+
+from mlb_airflow_data_pipeline.statsapi_treatment_script import (
+    OUTPUT_DETAILS,
+    BATTER_DATA_FILE_NAME,
 )
 
 
