@@ -8,7 +8,7 @@ from mlb_airflow_data_pipeline.statsapi_treatment_script import (
     batter_transformation_dict,
     DataTreater,
     DataTreaterInputRepresentation,
-    DataTreaterPaths,
+    DataPaths,
 )
 
 from mlb_airflow_data_pipeline.statsapi_feature_utils import (
@@ -25,7 +25,7 @@ EXAMPLE_DATA_PATH = os.path.join(
 
 batter_filter_conditions_dict = {"plateAppearances": 100, "atBats": 50}
 
-batter_input_paths = DataTreaterPaths(
+batter_input_paths = DataPaths(
     path_to_input_data=EXAMPLE_DATA_PATH,
 )
 

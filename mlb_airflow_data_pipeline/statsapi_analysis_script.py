@@ -10,19 +10,43 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
 )
 
 from mlb_airflow_data_pipeline.statsapi_treatment_script import (
+    DataPaths,
     OUTPUT_DETAILS,
     BATTER_DATA_FILE_NAME,
+    PITCHER_DATA_FILE_NAME,
 )
 
 
+class DataPlotter:
+    def __init__(self, data_paths: DataPaths, representable_variables: list):
+        self.data_paths = data_paths
+        self.representable_variables = representable_variables
+
+    def set_plots(self) -> None:
+        input_data = self.get_input_data()
+
+        for variable_pair in self.representable_variables:
+            scatter_plot(input_data, variable_pair)
+            plt.savefig(
+                self.data_paths.path_to_output_data  # type:ignore
+                + f"_{variable_pair[0]}_{variable_pair[1]}.png"
+            )
+
+    def get_input_data(self) -> pd.DataFrame:
+        input_data = pd.read_csv(self.data_paths.path_to_input_data, index_col=0)
+        return input_data
+
+
 # helper functions
-def scatter_plot(input_df: pd.DataFrame, x_var: str, y_var: str):
+def scatter_plot(input_df: pd.DataFrame, variable_pair: tuple[str, str]):
     """Create scatter plot for two variables"""
+
+    x_var, y_var = variable_pair
 
     fig, ax = plt.subplots()
     (
         input_df.plot(
-            ax=ax,
+            ax=ax,  # type: ignore
             kind="scatter",
             x=x_var,
             y=y_var,
@@ -37,15 +61,9 @@ def scatter_plot(input_df: pd.DataFrame, x_var: str, y_var: str):
             ),  # type: ignore
             fontsize=6,
         )
-    plt.savefig(OUTPUT_FILE_LOCATION + OUTPUT_DETAILS + f"_{x_var}_{y_var}.png")
 
 
-# import data
-batting_stats_df = pd.read_csv(DATA_FILE_LOCATION + BATTER_DATA_FILE_NAME, index_col=0)
-
-
-# generate a few charts to see behavior of the league
-tuple_variable_list = [
+batter_tuple_variable_list = [
     ("strikeOutsperplateAppearance", "homeRunsperplateAppearance"),
     ("strikeOutsperplateAppearance", "baseOnBallsperplateAppearance"),
     ("difstrikeOutsbaseOnBallsperplateAppearance", "normalized_obp"),
@@ -56,6 +74,35 @@ tuple_variable_list = [
     ("hits_z_score", "totalBases_z_score"),
 ]
 
+pitcher_tuple_variable_list = [
+    ("normalized_strikeoutsPer9Inn", "normalized_walksPer9Inn"),
+    ("normalized_strikeoutsPer9Inn", "normalized_hitsPer9Inn"),
+    ("normalized_strikeoutsPer9Inn", "normalized_homeRunsPer9"),
+]
 
-for x_var, y_var in tuple_variable_list:
-    scatter_plot(batting_stats_df, x_var, y_var)
+
+if __name__ == "__main__":
+
+    batter_plots_input_paths = DataPaths(
+        path_to_input_data=DATA_FILE_LOCATION + BATTER_DATA_FILE_NAME,
+        path_to_output_data=OUTPUT_FILE_LOCATION + OUTPUT_DETAILS,
+    )
+
+    batter_plotter = DataPlotter(
+        data_paths=batter_plots_input_paths,
+        representable_variables=batter_tuple_variable_list,
+    )
+
+    batter_plotter.set_plots()
+
+    pitcher_plots_input_paths = DataPaths(
+        path_to_input_data=DATA_FILE_LOCATION + PITCHER_DATA_FILE_NAME,
+        path_to_output_data=OUTPUT_FILE_LOCATION + OUTPUT_DETAILS,
+    )
+
+    pitcher_plotter = DataPlotter(
+        data_paths=pitcher_plots_input_paths,
+        representable_variables=pitcher_tuple_variable_list,
+    )
+
+    pitcher_plotter.set_plots()

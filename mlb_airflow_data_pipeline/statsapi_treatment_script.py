@@ -43,9 +43,10 @@ DATA_FILTER_THRESHOLD = 0.6
 
 OUTPUT_DETAILS = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}"
 BATTER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_batter_stats_df.csv"
+PITCHER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_pitcher_stats_df.csv"
 
 
-class DataTreaterPaths(BaseModel):
+class DataPaths(BaseModel):
     path_to_input_data: str
     path_to_output_data: Optional[str] = None
 
@@ -59,7 +60,7 @@ class DataTreaterInputRepresentation(BaseModel):
 class DataTreater:
     def __init__(
         self,
-        data_paths: DataTreaterPaths,
+        data_paths: DataPaths,
         input_parameters: DataTreaterInputRepresentation,
     ):
         self.data_paths = data_paths
@@ -177,7 +178,7 @@ batter_input_data_repr = DataTreaterInputRepresentation(
 
 # same thing for pitchers
 pitching_stats_list = ["playername"] + PITCHING_STATS
-pitcher_filter_conditions_dict = {"gamesPlayed": 25, "inningsPitched": 50}
+pitcher_filter_conditions_dict = {"gamesPlayed": 5, "inningsPitched": 15}
 
 pitcher_innings_norm_stats = ["intentionalWalks", "numberOfPitches", "strikes", "outs"]
 
@@ -265,7 +266,7 @@ if __name__ == "__main__":
     logging.info("Data treatment started")
 
     # batter
-    batter_input_paths = DataTreaterPaths(
+    batter_input_paths = DataPaths(
         path_to_input_data=DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME,
         path_to_output_data=DATA_FILE_LOCATION + BATTER_DATA_FILE_NAME,
     )
@@ -279,7 +280,7 @@ if __name__ == "__main__":
     logging.info("Data treatment for batters finished")
 
     # pitcher
-    pitcher_input_paths = DataTreaterPaths(
+    pitcher_input_paths = DataPaths(
         path_to_input_data=DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME,
         path_to_output_data=DATA_FILE_LOCATION + PITCHER_DATA_FILE_NAME,
     )
@@ -293,7 +294,7 @@ if __name__ == "__main__":
     logging.info("Data treatment for pitchers finished")
 
     # defender
-    defender_input_paths = DataTreaterPaths(
+    defender_input_paths = DataPaths(
         path_to_input_data=DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME,
         path_to_output_data=DATA_FILE_LOCATION + DEFENDER_DATA_FILE_NAME,
     )
