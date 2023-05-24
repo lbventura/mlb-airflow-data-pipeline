@@ -7,8 +7,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.ticker import MaxNLocator
 
-DATE_TIME_EXECUTION = datetime.today().strftime("%Y-%m-%d")
-
 
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     DATA_FILE_LOCATION,
@@ -17,6 +15,9 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
 )
 
 matplotlib.use("Agg")
+
+DATE_TIME_EXECUTION = datetime.today().strftime("%Y-%m-%d")
+
 
 with open(LEAGUE_NAME_LOCATION, "r") as text_file:
     LEAGUE_NAME = text_file.readline().strip()
@@ -40,19 +41,19 @@ class PlotGenerator:
     def get_time_series_stats_plots(self):
         """Produces time series plots for either team or player stats."""
 
-        self.set_time_series()
+        time_series = self.get_time_series()
 
-        for stat in self.time_series:
+        for stat in time_series.keys():
 
-            time_series_stat_df: pd.DataFrame = self.time_series[stat].dropna(axis=1)
+            time_series_stat_df: pd.DataFrame = time_series[stat].fillna(method="ffill")
 
             is_int = self.input_parameters.time_series_stats_is_int[stat]
             if is_int:
-                time_series_stat_df.astype(int)
+                time_series_stat_df.astype("Int64")
 
             self._set_time_series_plot(time_series_stat_df, stat)
 
-    def set_time_series(self) -> None:
+    def get_time_series(self) -> dict[str, pd.DataFrame]:
         """Imports all the files from a particular dataset, extracting time series
         for the variables specified in TIME_SERIES_VARIABLES_LIST.
 
@@ -66,11 +67,13 @@ class PlotGenerator:
             self._generate_data_from_file(file=file)
 
         time_series: dict[str, pd.DataFrame] = self._get_time_series()
-        self.time_series = time_series
+
+        return time_series
 
     def _generate_data_from_file(self, file: str) -> None:
 
-        date = file.split("_")[2]
+        filename = file.split("/")[-1]
+        date = filename.split("_")[2]
         date_df = pd.read_csv(file)
         date_df.rename(columns={"playername": "name"}, inplace=True)
 
