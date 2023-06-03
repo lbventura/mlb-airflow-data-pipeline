@@ -27,6 +27,9 @@ DATA_FILE_LOCATION = f"{SOURCE_LOCATION}/data/"
 
 OUTPUT_FILE_LOCATION = f"{SOURCE_LOCATION}/output/"
 
+# player information fields
+PLAYER_INFORMATION = ["playername", "team_id"]
+
 # separate data into batting, pitching and defense
 BATTING_STATS = [
     "gamesPlayed",
@@ -199,5 +202,6 @@ def expected_output_columns() -> list[str]:
             "homeRunsPer9",
             "inheritedRunners",
             "inheritedRunnersScored",
+            "team_id",
         ]
     )
