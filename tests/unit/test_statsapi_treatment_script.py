@@ -158,7 +158,7 @@ def test_data_treater_filter_data():
     )
     output_df = batter_data_treater.get_filter_data()
 
-    expected_output_shape = (90, 29)
+    expected_output_shape = (129, 30)
     assert output_df.shape == expected_output_shape
 
     assert not sum(
