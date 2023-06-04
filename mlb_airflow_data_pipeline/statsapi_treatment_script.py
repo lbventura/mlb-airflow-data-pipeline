@@ -10,6 +10,7 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     DATA_FILE_LOCATION,
     LEAGUE_NAME,
     BATTING_STATS,
+    PLAYER_INFORMATION,
     PITCHING_STATS,
     DEFENSIVE_STATS,
 )
@@ -138,7 +139,7 @@ def filter_data(input_df: pd.DataFrame, conditions_dict: dict) -> pd.DataFrame:
 
 
 # setting up information for the batter extraction
-batting_stats_list = ["playername"] + BATTING_STATS
+batting_stats_list = PLAYER_INFORMATION + BATTING_STATS
 batter_filter_conditions_dict = {"plateAppearances": 100, "atBats": 50}
 
 batter_plate_norm_stats = [
@@ -177,7 +178,7 @@ batter_input_data_repr = DataTreaterInputRepresentation(
 )
 
 # same thing for pitchers
-pitching_stats_list = ["playername"] + PITCHING_STATS
+pitching_stats_list = PLAYER_INFORMATION + PITCHING_STATS
 pitcher_filter_conditions_dict = {"gamesPlayed": 5, "inningsPitched": 15}
 
 pitcher_innings_norm_stats = ["intentionalWalks", "numberOfPitches", "strikes", "outs"]
@@ -204,7 +205,7 @@ pitcher_input_data_repr = DataTreaterInputRepresentation(
 )
 
 # same thing for defenders
-defending_stats_list = ["playername"] + DEFENSIVE_STATS
+defending_stats_list = PLAYER_INFORMATION + DEFENSIVE_STATS
 
 defender_filter_conditions_dict = {
     "plateAppearances": 100,

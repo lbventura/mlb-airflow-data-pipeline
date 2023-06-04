@@ -192,6 +192,7 @@ class DataExtractor:
 
         corrected_team_player_stats = team_player_stats.loc[corrected_player_ids]
         corrected_team_player_stats["playername"] = corrected_player_names
+        corrected_team_player_stats["team_id"] = team_number
 
         return (
             _insert_col_in_first_position(corrected_team_player_stats),
