@@ -6,7 +6,6 @@ import statsapi
 
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     DATA_FILE_LOCATION,
-    DATE_TIME_EXECUTION,
     IS_SEASON_STATS,
     LEAGUE_DIVISION_MAPPING,
     LEAGUE_MAPPING,
@@ -55,6 +54,14 @@ def _generate_player_stats(player_stats_str: list[str]) -> dict:
     return player_stats
 
 
+def _get_stats_type(is_season_stats: bool = IS_SEASON_STATS) -> str:
+    if is_season_stats:
+        stats_type = "season"
+    else:
+        stats_type = "career"
+    return stats_type
+
+
 class TeamStats:
     def __init__(self, player_names_per_team: list[str]):
         self.player_names_per_team = player_names_per_team
@@ -67,14 +74,14 @@ class TeamStats:
 
         self._set_player_name_ids()
 
-        for name, id in self.player_name_ids.items():
+        for name, player_id in self.player_name_ids.items():
             try:
                 self.team_stats[name] = statsapi.player_stats(
-                    id, type=self.get_stats_type()
+                    player_id, type=_get_stats_type()
                 ).split("\n")
-                active_player_name_ids[name] = id
+                active_player_name_ids[name] = player_id
             except TypeError:
-                inactive_player_info[name] = id
+                inactive_player_info[name] = player_id
 
         team_player_stats = self._get_team_player_stats()
 
@@ -98,17 +105,13 @@ class TeamStats:
         ).T
         return team_player_stats
 
-    def get_stats_type(self, is_season_stats: bool = IS_SEASON_STATS) -> str:
-        if is_season_stats:
-            stats_type = "season"
-        else:
-            stats_type = "career"
-        return stats_type
-
 
 class DataExtractor:
     def __init__(self, league_name: str = LEAGUE_NAME) -> None:
         self.league_name = league_name
+        self.team_id_name_mapping: dict[int, str] = {}
+        self.league_standings: pd.DataFrame = pd.DataFrame()
+        self.league_team_rosters_player_names: dict[int, list[str]]
 
     def get_player_stats_per_league(
         self,
@@ -206,7 +209,7 @@ class DataExtractor:
         team_ids_names_df.set_index("team_id")
         team_ids_names = team_ids_names_df.to_dict(orient="records")
 
-        self.team_id_name_mapping: dict[int, str] = {
+        self.team_id_name_mapping = {
             record["team_id"]: record["name"] for record in team_ids_names
         }
 
@@ -246,9 +249,7 @@ class DataExtractor:
             for team_id in team_ids
         }
 
-        self.league_team_rosters_player_names: dict[
-            int, list[str]
-        ] = league_team_rosters_player_names  # type: ignore
+        self.league_team_rosters_player_names = league_team_rosters_player_names  # type: ignore
 
 
 if __name__ == "__main__":
@@ -259,7 +260,7 @@ if __name__ == "__main__":
 
     data_extractor.set_league_team_rosters_player_names()
 
-    (data_extractor.league_standings).to_csv(
+    data_extractor.league_standings.to_csv(
         DATA_FILE_LOCATION + LEAGUE_STANDINGS_FILE_NAME
     )
 
