@@ -1,6 +1,6 @@
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
-    LEAGUE_MAPPING,
     LEAGUE_DIVISION_MAPPING,
+    LEAGUE_MAPPING,
 )
 
 

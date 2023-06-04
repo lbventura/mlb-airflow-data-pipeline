@@ -1,15 +1,14 @@
-import statsapi
 import pytest
-
-from mlb_airflow_data_pipeline.statsapi_parameters_script import (
-    SEASON_YEAR,
-    LEAGUE_MAPPING,
-    LEAGUE_DIVISION_MAPPING,
-)
+import statsapi
 
 from mlb_airflow_data_pipeline.statsapi_extraction_script import (
-    TeamStats,
     DataExtractor,
+    TeamStats,
+)
+from mlb_airflow_data_pipeline.statsapi_parameters_script import (
+    LEAGUE_DIVISION_MAPPING,
+    LEAGUE_MAPPING,
+    SEASON_YEAR,
 )
 
 

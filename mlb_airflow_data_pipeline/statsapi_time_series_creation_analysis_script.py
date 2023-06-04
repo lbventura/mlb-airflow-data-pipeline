@@ -1,12 +1,11 @@
 import glob
 from datetime import datetime
-from pydantic import BaseModel
 
 import matplotlib
 import matplotlib.pyplot as plt
 import pandas as pd
 from matplotlib.ticker import MaxNLocator
-
+from pydantic import BaseModel
 
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     DATA_FILE_LOCATION,
