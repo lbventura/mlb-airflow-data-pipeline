@@ -111,7 +111,7 @@ class DataExtractor:
         self.league_name = league_name
         self.team_id_name_mapping: dict[int, str] = {}
         self.league_standings: pd.DataFrame = pd.DataFrame()
-        self.league_team_rosters_player_names: dict[int, list[str]]
+        self.league_team_rosters_player_names: dict[int, list[str]] = {}
 
     def get_player_stats_per_league(
         self,
