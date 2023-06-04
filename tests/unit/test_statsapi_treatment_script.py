@@ -102,6 +102,7 @@ def numeric_features_list() -> list[str]:
         "strikePercentage",
         "strikeoutsPer9Inn",
         "strikes",
+        "team_id",
         "throwingErrors",
         "totalBases",
         "triplePlays",
@@ -136,7 +137,9 @@ def test_data_treater_input_data(is_numeric, feature_list):
     batter_data_treater = DataTreater(
         data_paths=batter_input_paths, input_parameters=batter_input_data_repr
     )
+
     output_df = batter_data_treater.get_input_data()
+
     output_df_is_numeric_columns = {
         col: pdtypes.is_numeric_dtype(output_df[col]) for col in output_df.columns
     }
