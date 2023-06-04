@@ -1,34 +1,30 @@
+import argparse
 import logging
+from typing import Optional
 
 import numpy as np
 import pandas as pd
-
 from pydantic import BaseModel
-from typing import Optional
-
-from mlb_airflow_data_pipeline.statsapi_parameters_script import (
-    DATA_FILE_LOCATION,
-    LEAGUE_NAME,
-    BATTING_STATS,
-    PLAYER_INFORMATION,
-    PITCHING_STATS,
-    DEFENSIVE_STATS,
-)
 
 from mlb_airflow_data_pipeline.statsapi_extraction_script import (
     DATE_TIME_EXECUTION,
     PLAYER_DATA_FILE_NAME,
 )
-
 from mlb_airflow_data_pipeline.statsapi_feature_utils import (
-    create_plate_appearance_normalization,
-    create_innings_pitched_normalization,
-    create_mean_normalization,
     create_babip,
     create_dif_strike_outs_base_on_balls,
+    create_innings_pitched_normalization,
+    create_mean_normalization,
+    create_plate_appearance_normalization,
 )
-
-import argparse
+from mlb_airflow_data_pipeline.statsapi_parameters_script import (
+    BATTING_STATS,
+    DATA_FILE_LOCATION,
+    DEFENSIVE_STATS,
+    LEAGUE_NAME,
+    PITCHING_STATS,
+    PLAYER_INFORMATION,
+)
 
 # creates a logger
 logging.basicConfig(

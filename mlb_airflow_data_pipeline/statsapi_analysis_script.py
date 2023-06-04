@@ -8,12 +8,11 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     DATA_FILE_LOCATION,
     OUTPUT_FILE_LOCATION,
 )
-
 from mlb_airflow_data_pipeline.statsapi_treatment_script import (
-    DataPaths,
-    OUTPUT_DETAILS,
     BATTER_DATA_FILE_NAME,
+    OUTPUT_DETAILS,
     PITCHER_DATA_FILE_NAME,
+    DataPaths,
 )
 
 

@@ -1,5 +1,5 @@
-from datetime import datetime
 import os
+from datetime import datetime
 
 DATE_TIME_EXECUTION = datetime.today().strftime("%Y-%m-%d")
 

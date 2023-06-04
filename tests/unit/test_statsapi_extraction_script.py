@@ -1,9 +1,9 @@
 import pandas as pd
 
 from mlb_airflow_data_pipeline.statsapi_extraction_script import (
-    _insert_col_in_first_position,
     _extract_player_name,
     _generate_player_stats,
+    _insert_col_in_first_position,
 )
 
 

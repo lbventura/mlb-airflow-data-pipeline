@@ -1,17 +1,16 @@
 import logging
-import pandas as pd
-
 from datetime import datetime
 
+import pandas as pd
 import statsapi
 
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     DATA_FILE_LOCATION,
+    DATE_TIME_EXECUTION,
     IS_SEASON_STATS,
     LEAGUE_DIVISION_MAPPING,
     LEAGUE_MAPPING,
     LEAGUE_NAME,
-    DATE_TIME_EXECUTION,
     SEASON_YEAR,
     expected_output_columns,
 )

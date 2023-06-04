@@ -1,19 +1,18 @@
-import pandas.api.types as pdtypes
 import os
+
+import pandas.api.types as pdtypes
 import pytest
 
-
+from mlb_airflow_data_pipeline.statsapi_feature_utils import (
+    create_mean_normalization,
+    create_plate_appearance_normalization,
+)
 from mlb_airflow_data_pipeline.statsapi_treatment_script import (
-    batting_stats_list,
-    batter_transformation_dict,
+    DataPaths,
     DataTreater,
     DataTreaterInputRepresentation,
-    DataPaths,
-)
-
-from mlb_airflow_data_pipeline.statsapi_feature_utils import (
-    create_plate_appearance_normalization,
-    create_mean_normalization,
+    batter_transformation_dict,
+    batting_stats_list,
 )
 
 CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
