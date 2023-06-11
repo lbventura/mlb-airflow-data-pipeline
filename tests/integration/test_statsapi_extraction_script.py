@@ -9,6 +9,8 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     LEAGUE_DIVISION_MAPPING,
     LEAGUE_MAPPING,
     SEASON_YEAR,
+    american_league_team_id_name,
+    national_league_team_id_name,
 )
 
 
@@ -91,46 +93,6 @@ def test_team_stats_get_team_stats():
     assert sorted(list(team_player_stats.index)) == sorted(active_nyy_players.values())
     assert active_player_name_ids
     assert not inactive_player_info
-
-
-def american_league_team_id_name() -> dict:
-    return {
-        140: "Texas Rangers",
-        117: "Houston Astros",
-        136: "Seattle Mariners",
-        108: "Los Angeles Angels",
-        133: "Oakland Athletics",
-        139: "Tampa Bay Rays",
-        110: "Baltimore Orioles",
-        147: "New York Yankees",
-        141: "Toronto Blue Jays",
-        111: "Boston Red Sox",
-        142: "Minnesota Twins",
-        116: "Detroit Tigers",
-        114: "Cleveland Guardians",
-        145: "Chicago White Sox",
-        118: "Kansas City Royals",
-    }
-
-
-def national_league_team_id_name() -> dict:
-    return {
-        109: "Arizona Diamondbacks",
-        119: "Los Angeles Dodgers",
-        137: "San Francisco Giants",
-        135: "San Diego Padres",
-        115: "Colorado Rockies",
-        144: "Atlanta Braves",
-        146: "Miami Marlins",
-        121: "New York Mets",
-        143: "Philadelphia Phillies",
-        120: "Washington Nationals",
-        158: "Milwaukee Brewers",
-        134: "Pittsburgh Pirates",
-        113: "Cincinnati Reds",
-        112: "Chicago Cubs",
-        138: "St. Louis Cardinals",
-    }
 
 
 @pytest.mark.parametrize(
