@@ -41,7 +41,8 @@ def test_team_roster():
     result = statsapi.roster(team_id, season=SEASON_YEAR).split("\n")
     assert type(result) == list
 
-    player_identifier = result[0]
+    player_identifier = [player for player in result if "Rizzo" in player][0]
+
     assert type(player_identifier) == str
     assert len(player_identifier.split(" ")) == 6
     # TODO: include regex which checks if player_identifier.split(" ")[-2:]
@@ -78,19 +79,19 @@ def test_standings_data():
 def test_team_stats_get_team_stats():
     # this test requires a manual input of players that are known to be
     # active
-    active_nyy_players = {
+    active_mlb_players = {
         "Aaron Judge": 592450,
         "Aaron Hicks": 543305,
         "Gerrit Cole": 543037,
     }
-    team_stats = TeamStats(player_names_per_team=list(active_nyy_players.keys()))
+    team_stats = TeamStats(player_names_per_team=list(active_mlb_players.keys()))
     (
         team_player_stats,
         active_player_name_ids,
         inactive_player_info,
     ) = team_stats.get_team_stats()
 
-    assert sorted(list(team_player_stats.index)) == sorted(active_nyy_players.values())
+    assert sorted(list(team_player_stats.index)) == sorted(active_mlb_players.values())
     assert active_player_name_ids
     assert not inactive_player_info
 
