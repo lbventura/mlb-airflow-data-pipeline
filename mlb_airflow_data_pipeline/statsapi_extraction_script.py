@@ -16,11 +16,11 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
 
 DATE_TIME_EXECUTION = datetime.today().strftime("%Y-%m-%d")
 
-LEAGUE_STANDINGS_FILE_NAME = (
-    f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}_league_standings_df.csv"
-)
+OUTPUT_DETAILS = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}"
 
-PLAYER_DATA_FILE_NAME = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}_full_player_stats_df.csv"
+LEAGUE_STANDINGS_FILE_NAME = f"{OUTPUT_DETAILS}_league_standings_df.csv"
+
+PLAYER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_full_player_stats_df.csv"
 
 # creates a logger
 logging.basicConfig(
