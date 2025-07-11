@@ -40,7 +40,7 @@ After these steps, the virtual environment is deactivated. If you skimmed throug
     4. The name and location of the files that store the team and player data;
     5. The name and location of the .png images generated in the analysis step;
 
-This becomes quite useful when used in combination with Airflow orchestration. 
+This becomes quite useful when used in combination with Airflow orchestration.
 
 ## Shortcomings
 
