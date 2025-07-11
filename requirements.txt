@@ -3,4 +3,3 @@ numpy
 pandas
 pydantic
 pytest
-apache-airflow
