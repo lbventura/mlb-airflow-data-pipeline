@@ -11,7 +11,7 @@ def lookup_player_expected_result() -> list[dict]:
             "lastName": "Judge",
             "primaryNumber": "99",
             "currentTeam": {"id": 147},
-            "primaryPosition": {"code": "8", "abbreviation": "CF"},
+            "primaryPosition": {"code": "9", "abbreviation": "RF"},
             "useName": "Aaron",
             "boxscoreName": "Judge",
             "nickName": "Baj",
