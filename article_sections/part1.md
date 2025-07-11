@@ -8,7 +8,7 @@ A couple of months ago, my brother Gonçalo excitedly introduced me to America's
 
 This is not the case, for example, in soccer (i.e, football), where standard match statistics are mostly team-focused (possessions statistics, distance ran) or final outcome oriented (goals and assists or important saves). These statistics cause, at least in the eyes of the layperson, an overvaluation of the importance of final-third players, while important defensive actions - as a clearing header away from goal - or important offensive actions - as a build-up pass during the construction phase that slices through the opponent's pressing - remain unnoticed. See, however, [3](https://www.tandfonline.com/doi/full/10.1080/24733938.2021.1944660) for more information on advanced football statistics.
 
-The motivation is two-fold: 
+The motivation is two-fold:
 
 * Develop a fundamental understanding of the game of baseball through a quantitative (and, when possible, scientific) approach;
 * Create the tools for extracting information from team and player data seamlessly.
@@ -18,7 +18,7 @@ The motivation is two-fold:
 
 Regardless of how lofty one's research ideas are, one first needs to develop an infrastructure that allows for scientific investigation. The first goal is therefore to:
 
-Create a data pipeline which allows for automatic, fast and reliable extraction, manipulation and representation of data from the MLB Statistics API (statsapi). 
+Create a data pipeline which allows for automatic, fast and reliable extraction, manipulation and representation of data from the MLB Statistics API (statsapi).
 
 This involves:
 
@@ -27,7 +27,7 @@ This involves:
 3. Summarize results in an automatically-generated report with a relevant description, tables and charts.
 
 To achieve this, the following tools will be used, with Python as the programming language:
-    
+
 1. The excellent package `statsapi` [4](https://github.com/toddrob99/MLB-StatsAPI), which writes HTTP requests to the MLB API. This simplifies data collection and allows us to focus on extracting the data from these requests and treating it;
 2. Pandas for creating data tables and generating new features;
 3. Matplotlib for representing the results;

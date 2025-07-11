@@ -10,7 +10,7 @@ This is the fifth part of a series on a data pipeline which uses the Major Leagu
 Following a long pause for rest, relaxation and reflection, we continue with the analysis of the collected data with the goal of understanding different attacking (i.e, batting) players types in baseball. To achieve this, we are going to:
 
 1. Work through the game dynamics and understand how a team can maximize its points (i.e, number of runs), based on a very simple model with two types of players;
-2. Design variables which describe the two aforementioned player types. 
+2. Design variables which describe the two aforementioned player types.
 
 ## Analyzing data - analysis_task
 
@@ -29,7 +29,7 @@ In general, how the team behaves during the game is influenced by the coaching p
 Our team is only composed of two players, Kyle Schwarber and Luis Arraez:
 Kyle Schwarber [5](https://www.mlb.com/player/kyle-schwarber-656941) was one of the best power hitters in the National League, collecting a record total of 46 homeruns during the regular season. However, he only had the 71st best on-base percentage of the league, with 32.3%;
 Luis Arraez [6](https://www.mlb.com/player/luis-arraez-650333) was one of the best contact hitters in the American League, only being striked out 49 times (best in MLB) during the regular season while recording a 37.5% on-base percentage (obp). However, he only had the 227th best home run numbers in the league, totalling 8;
- 
+
 As the manager of our own MLB team, we would send our 3 clones of Luis Arraez first. Each of these has a good chance of getting on base: very roughly there is a probability of 5.3% (i.e, 0.053 = 0.375^3) that the bases will be loaded (one player in each base) after these clones had their chance at the plate. We then send Kyle Schwarber, the power hitter per excellence. If he scores an homerun (for which there is a probability of approximately 7% [7](https://www.baseball-reference.com/players/s/schwaky01.shtml)) with the bases loaded, that is 4 runs in one single hit, with a probability of 0.4%, assuming independent events (i.e, 0.053*0.07 ≈ 0.004).
 
 Compare this to the strategy where we instead send 3 clones of the power hitter Schwarber first. Very roughly there is a probability of 3.4% (i.e, 0.034 = 0.323^3) that the bases will be loaded after their plate appearances. Not surprisingly, the polynomial dependence on the on-base percentage causes a massive difference of about 2% (= 0.053 - 0.034) between three Luiz Arraez or three Kyle Schwarber loading the bases. Then sending Luis Arraez to deliver a homerun (for which there is a probability of about 1.3% [8](https://www.baseball-reference.com/players/a/arraelu01.shtml)) also gives us 4 runs in one single hit, but with a probability of 0.04%, a factor of 10 difference from the previous scenario!
