@@ -8,19 +8,22 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.13.5"]
+        python-version: ["3.12.11"]
 
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.13.5'
-    - name: Install dependencies
+        python-version: '3.12.11'
+    - name: Install Micromamba
       run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt
-        pip install -e .
+        "${SHELL}" <(curl -L micro.mamba.pm/install.sh)
+    - name: Setup Micromamba environment and install dependencies
+      run: |
+        micromamba create -n mlb-airflow-env python=3.12.11 -y
+        micromamba install -n mlb-airflow-env apache-airflow google-re2 -c conda-forge -y
+        micromamba run -n mlb-airflow-env pip install -e .
     - name: Test with pytest
       run: |
-        pytest tests
+        micromamba run -n mlb-airflow-env pytest tests

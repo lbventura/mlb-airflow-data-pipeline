@@ -5,13 +5,15 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mlb-airflow-data-pipeline"
 version = "0.0.1"
+requires-python = "==3.12.11"
 dependencies = [
-    "matplotlib",
-    "numpy",
-    "pandas",
-    "pydantic",
-    "pytest",
-    "MLB-StatsAPI",
+    "matplotlib==3.10.3",
+    "numpy==2.3.1",
+    "pandas==2.3.1",
+    "pydantic==2.11.7",
+    "pytest==8.4.1",
+    "MLB-StatsAPI==1.9.0",
+    "apache-airflow==3.0.2",
 ]
 
 [tool.setuptools.packages.find]
