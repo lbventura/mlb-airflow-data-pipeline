@@ -22,19 +22,19 @@ t0 = BashOperator(
 
 t1 = BashOperator(
     task_id="extraction_task",
-    bash_command="bash /root/mlb-airflow-data-pipeline/bash/statsapi_extraction_bash.txt",
+    bash_command="bash /root/mlb-airflow-data-pipeline/bash/statsapi_extraction_bash.sh",
     dag=dag_nl,
 )
 
 t2 = BashOperator(
     task_id="treatment_task",
-    bash_command="bash /root/mlb-airflow-data-pipeline/bash/statsapi_treatment_bash.txt",
+    bash_command="bash /root/mlb-airflow-data-pipeline/bash/statsapi_treatment_bash.sh",
     dag=dag_nl,
 )
 
 t3 = BashOperator(
     task_id="analysis_task",
-    bash_command="bash /root/mlb-airflow-data-pipeline/bash/statsapi_analysis_bash.txt",
+    bash_command="bash /root/mlb-airflow-data-pipeline/bash/statsapi_analysis_bash.sh",
     dag=dag_nl,
 )
 

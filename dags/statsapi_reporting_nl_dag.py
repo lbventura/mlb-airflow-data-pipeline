@@ -20,19 +20,19 @@ t0 = BashOperator(
 
 t1 = BashOperator(
     task_id="time_series_creation_task",
-    bash_command="bash /root/mlb-airflow-data-pipeline/bash/statsapi_time_series_generation_bash.txt",
+    bash_command="bash /root/mlb-airflow-data-pipeline/bash/statsapi_time_series_generation_bash.sh",
     dag=dag_nl,
 )
 
 t2 = BashOperator(
     task_id="report_task",
-    bash_command="bash /root/mlb-airflow-data-pipeline/bash/statsapi_reporting_bash.txt",
+    bash_command="bash /root/mlb-airflow-data-pipeline/bash/statsapi_reporting_bash.sh",
     dag=dag_nl,
 )
 
 t3 = BashOperator(
     task_id="rename_task",
-    bash_command="bash /root/mlb-airflow-data-pipeline/bash/statsapi_name_change_nl_bash.txt",
+    bash_command="bash /root/mlb-airflow-data-pipeline/bash/statsapi_name_change_nl_bash.sh",
     dag=dag_nl,
 )
 

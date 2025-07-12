@@ -1,4 +1,0 @@
-#!/bin/sh
-source /root/virtual-envs/mlb-airflow-venv/bin/activate
-jupyter nbconvert --execute /root/mlb-airflow-data-pipeline/mlb_airflow_data_pipeline/statsapi_reporting_notebook.ipynb --TemplateExporter.exclude_input=True --to html
-deactivate /root/virtual-envs/mlb-airflow-venv/bin
