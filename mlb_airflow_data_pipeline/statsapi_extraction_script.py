@@ -1,4 +1,3 @@
-import logging
 from datetime import datetime
 
 import pandas as pd
@@ -13,6 +12,7 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     SEASON_YEAR,
     expected_output_columns,
 )
+from mlb_airflow_data_pipeline.logging_setup import get_logger
 
 DATE_TIME_EXECUTION = datetime.today().strftime("%Y-%m-%d")
 
@@ -22,14 +22,8 @@ LEAGUE_STANDINGS_FILE_NAME = f"{OUTPUT_DETAILS}_league_standings_df.csv"
 
 PLAYER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_full_player_stats_df.csv"
 
-# creates a logger
-logging.basicConfig(
-    filename="mlb-airflow-debugger.log",
-    format="%(asctime)s: %(levelname)s: %(message)s",
-    encoding="utf-8",
-    level=logging.DEBUG,
-    filemode="w",
-)
+# Initialize structured logger
+logger = get_logger("statsapi_extraction", league=LEAGUE_NAME)
 
 
 def _insert_col_in_first_position(
@@ -137,14 +131,21 @@ class DataExtractor:
                 if inactive_player_info:
                     inactive_players_per_team[team_number] = inactive_player_info
                 successful_team_name = self.team_id_name_mapping[team_number]
-                logging.info(
-                    f"Extraction succeeded for the team {successful_team_name}, team number {team_number}"
+                logger.info(
+                    "team_extraction_success",
+                    team_name=successful_team_name,
+                    team_number=team_number,
+                    players_count=len(team_player_stats),
                 )
-            except Exception:
+            except Exception as e:
                 failed_team_name = self.team_id_name_mapping[team_number]
                 failed_teams.append(failed_team_name)
-                logging.exception(
-                    f"Extraction succeeded for the team {failed_team_name}, team number {team_number}"
+                logger.error(
+                    "team_extraction_failed",
+                    team_name=failed_team_name,
+                    team_number=team_number,
+                    error=str(e),
+                    exc_info=True,
                 )
         player_stats = pd.concat(league_player_team_stats.values())
 
@@ -254,17 +255,23 @@ class DataExtractor:
 
 
 if __name__ == "__main__":
-    logging.info("Data extraction started")
+    logger.info("extraction_started", league=LEAGUE_NAME, date=DATE_TIME_EXECUTION)
 
     data_extractor = DataExtractor(league_name=LEAGUE_NAME)
 
     data_extractor.set_league_team_rosters_player_names()
-
-    data_extractor.league_standings.to_csv(
-        DATA_FILE_LOCATION + LEAGUE_STANDINGS_FILE_NAME
+    logger.info(
+        "league_standings_loaded", standings_shape=data_extractor.league_standings.shape
     )
 
+    standings_path = DATA_FILE_LOCATION + LEAGUE_STANDINGS_FILE_NAME
+    data_extractor.league_standings.to_csv(standings_path)
+    logger.info("league_standings_saved", file_path=standings_path)
+
     data_extractor.set_team_ids_and_names()
+    logger.info(
+        "team_mapping_created", teams_count=len(data_extractor.team_id_name_mapping)
+    )
 
     (
         league_player_team_stats_df,
@@ -272,10 +279,23 @@ if __name__ == "__main__":
         failed_teams,
     ) = data_extractor.get_player_stats_per_league()
 
-    league_player_team_stats_df.to_csv(DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME)
+    player_stats_path = DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME
+    league_player_team_stats_df.to_csv(player_stats_path)
 
-    logging.info("Full player stats were saved")
-    logging.info(f"The inactive players per team are {inactive_players_per_team}")
-    logging.info(f"The failed teams are {failed_teams}")
+    logger.info(
+        "extraction_completed",
+        players_total=len(league_player_team_stats_df),
+        inactive_players_count=sum(
+            len(players) for players in inactive_players_per_team.values()
+        ),
+        failed_teams_count=len(failed_teams),
+        file_path=player_stats_path,
+    )
 
-    logging.info("Data extraction finished")
+    if inactive_players_per_team:
+        logger.warning(
+            "inactive_players_found", inactive_players=inactive_players_per_team
+        )
+
+    if failed_teams:
+        logger.error("teams_extraction_failed", failed_teams=failed_teams)
