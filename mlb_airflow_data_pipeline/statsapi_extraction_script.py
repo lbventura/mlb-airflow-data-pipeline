@@ -68,7 +68,6 @@ class TeamStats:
         self.team_stats: dict = {}
 
     def get_team_stats(self) -> tuple[pd.DataFrame, dict, dict]:
-
         active_player_name_ids = {}
         inactive_player_info = {}
 
@@ -141,7 +140,7 @@ class DataExtractor:
                 logging.info(
                     f"Extraction succeeded for the team {successful_team_name}, team number {team_number}"
                 )
-            except:
+            except Exception:
                 failed_team_name = self.team_id_name_mapping[team_number]
                 failed_teams.append(failed_team_name)
                 logging.exception(
@@ -223,7 +222,9 @@ class DataExtractor:
 
         for division in LEAGUE_DIVISION_MAPPING[league_number]:
             division_results: pd.DataFrame = pd.DataFrame(
-                statsapi.standings_data(league_number, season=SEASON_YEAR)[division]["teams"]  # type: ignore
+                statsapi.standings_data(league_number, season=SEASON_YEAR)[division][
+                    "teams"
+                ]  # type: ignore
             )
             league_list.append(division_results)
 
@@ -253,7 +254,6 @@ class DataExtractor:
 
 
 if __name__ == "__main__":
-
     logging.info("Data extraction started")
 
     data_extractor = DataExtractor(league_name=LEAGUE_NAME)

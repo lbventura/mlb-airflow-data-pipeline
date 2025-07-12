@@ -118,6 +118,7 @@ DEFENSIVE_STATS = [
     "triplePlays",
 ]
 
+
 # list of expected output columns
 def expected_output_columns() -> list[str]:
     return sorted(

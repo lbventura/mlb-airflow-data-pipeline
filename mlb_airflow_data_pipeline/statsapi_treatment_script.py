@@ -66,10 +66,9 @@ class DataTreater:
     def set_output_data_file(self) -> None:
         output_data = self.get_output_data()
         output_data.to_csv(self.data_paths.path_to_output_data)  # type: ignore
-        logging.info(f"Generating output file was successful")
+        logging.info("Generating output file was successful")
 
     def get_output_data(self) -> pd.DataFrame:
-
         filtered_data = self.get_filter_data()
 
         transformation_dict = self.input_parameters.transformation_dict
@@ -83,14 +82,14 @@ class DataTreater:
             else:
                 filtered_data = function(filtered_data)
 
-        logging.info(f"Generating output data was successful")
+        logging.info("Generating output data was successful")
         return filtered_data
 
     def get_filter_data(self) -> pd.DataFrame:
         filtered_data = filter_data(
             self.get_subset_data(), self.input_parameters.filter_conditions_dict
         )
-        logging.info(f"Filtering data was successful")
+        logging.info("Filtering data was successful")
         return filtered_data
 
     def get_subset_data(self) -> pd.DataFrame:
@@ -102,7 +101,7 @@ class DataTreater:
 
     def get_input_data(self) -> pd.DataFrame:
         input_data = pd.read_csv(self.data_paths.path_to_input_data, index_col=0)
-        logging.info(f"Data input was successful")
+        logging.info("Data input was successful")
         return input_data
 
 
@@ -124,7 +123,7 @@ def filter_data(input_df: pd.DataFrame, conditions_dict: dict) -> pd.DataFrame:
     return_df = input_df[conditions].copy()
 
     good_data_percentage = len(return_df) / len(input_df)
-    logging.info(f"The percentage of good data is {round(good_data_percentage,3)}")
+    logging.info(f"The percentage of good data is {round(good_data_percentage, 3)}")
 
     if good_data_percentage < DATA_FILTER_THRESHOLD:
         logging.warning(
@@ -229,7 +228,6 @@ defender_input_data_repr = DataTreaterInputRepresentation(
 )
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser(
         description="Optional input arguments for treatment script",
         formatter_class=argparse.ArgumentDefaultsHelpFormatter,

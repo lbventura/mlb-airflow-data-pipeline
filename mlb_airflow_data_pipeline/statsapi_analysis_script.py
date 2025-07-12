@@ -81,7 +81,6 @@ pitcher_tuple_variable_list = [
 
 
 if __name__ == "__main__":
-
     batter_plots_input_paths = DataPaths(
         path_to_input_data=DATA_FILE_LOCATION + BATTER_DATA_FILE_NAME,
         path_to_output_data=OUTPUT_FILE_LOCATION + OUTPUT_DETAILS,

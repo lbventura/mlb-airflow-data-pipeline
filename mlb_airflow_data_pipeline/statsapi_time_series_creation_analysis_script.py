@@ -43,7 +43,6 @@ class PlotGenerator:
         time_series = self.get_time_series()
 
         for stat in time_series.keys():
-
             time_series_stat_df: pd.DataFrame = time_series[stat].fillna(method="ffill")
 
             is_int = self.input_parameters.time_series_stats_is_int[stat]
@@ -70,7 +69,6 @@ class PlotGenerator:
         return time_series
 
     def _generate_data_from_file(self, file: str) -> None:
-
         filename = file.split("/")[-1]
         date = filename.split("_")[2]
         date_df = pd.read_csv(file)
@@ -87,7 +85,6 @@ class PlotGenerator:
             )
 
     def _get_time_series(self) -> dict[str, pd.DataFrame]:
-
         time_series: dict = {}
 
         days = self.time_series_datasets.keys()
@@ -100,7 +97,6 @@ class PlotGenerator:
         return time_series
 
     def _set_time_series_plot(self, dataframe: pd.DataFrame, stat: str) -> None:
-
         self.figure, self.axes = plt.subplots(figsize=(20, 6))
 
         self._generate_figure_from_dataframe(dataframe=dataframe)
