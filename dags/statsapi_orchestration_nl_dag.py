@@ -9,7 +9,7 @@ default_args = {"start_date": datetime(2023, 4, 1)}
 dag_nl = DAG(
     "mlb-airflow-data-pipeline-nl-dag",
     default_args=default_args,
-    schedule_interval="30 08 * * *",
+    schedule="30 08 * * *",
     catchup=False,
 )
 
