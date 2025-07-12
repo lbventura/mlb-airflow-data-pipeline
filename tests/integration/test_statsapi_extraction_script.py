@@ -1,3 +1,5 @@
+from typing import Any
+
 import pytest
 import statsapi
 
@@ -14,31 +16,33 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
 )
 
 
-def test_player_stats(lookup_player_expected_result):
-    example_id = lookup_player_expected_result[0]["id"]
-    result = statsapi.player_stats(example_id, type="season").split("\n")
+def test_player_stats(lookup_player_expected_result: list[dict[str, Any]]) -> None:
+    example_id: int = lookup_player_expected_result[0]["id"]
+    result: list[str] = statsapi.player_stats(example_id, type="season").split("\n")
     assert isinstance(result, list)
     assert isinstance(result[0], str)
     # check that the ":" separator is used
     assert [stat for stat in result if ":" in stat]
 
 
-def test_lookup_player(lookup_player_expected_result):
-    result = statsapi.lookup_player("Aaron Judge", season=SEASON_YEAR)
+def test_lookup_player(lookup_player_expected_result: list[dict[str, Any]]) -> None:
+    result: list[dict[str, Any]] = statsapi.lookup_player(
+        "Aaron Judge", season=SEASON_YEAR
+    )
     assert result == lookup_player_expected_result
 
-    data = result[0]
-    expected_data = lookup_player_expected_result[0]
+    data: dict[str, Any] = result[0]
+    expected_data: dict[str, Any] = lookup_player_expected_result[0]
     assert data.keys() == expected_data.keys()
     assert data["id"] == 592450
 
 
-def test_team_roster():
-    team_id = 147  # NYY
-    result = statsapi.roster(team_id, season=SEASON_YEAR).split("\n")
+def test_team_roster() -> None:
+    team_id: int = 147  # NYY
+    result: list[str] = statsapi.roster(team_id, season=SEASON_YEAR).split("\n")
     assert isinstance(result, list)
 
-    player_identifier = [player for player in result if "Rizzo" in player][0]
+    player_identifier: str = [player for player in result if "Rizzo" in player][0]
 
     assert isinstance(player_identifier, str)
     assert len(player_identifier.split(" ")) == 6
@@ -46,11 +50,15 @@ def test_team_roster():
     # is of the form "{first_name} {second_name}"
 
 
-def test_standings_data():
-    american_league_id = LEAGUE_MAPPING["american_league"]
-    first_division_american_league = min(LEAGUE_DIVISION_MAPPING[american_league_id])
+def test_standings_data() -> None:
+    american_league_id: int = LEAGUE_MAPPING["american_league"]
+    first_division_american_league: int = min(
+        LEAGUE_DIVISION_MAPPING[american_league_id]
+    )
 
-    result = statsapi.standings_data(american_league_id, season=SEASON_YEAR)[  # type: ignore
+    result: list[dict[str, Any]] = statsapi.standings_data(
+        american_league_id, season=SEASON_YEAR
+    )[  # type: ignore
         first_division_american_league
     ]["teams"]
 
@@ -70,15 +78,17 @@ def test_standings_data():
     ]
 
 
-def test_team_stats_get_team_stats():
+def test_team_stats_get_team_stats() -> None:
     # this test requires a manual input of players that are known to be
     # active
-    active_mlb_players = {
+    active_mlb_players: dict[str, int] = {
         "Aaron Judge": 592450,
         "Aaron Hicks": 543305,
         "Gerrit Cole": 543037,
     }
-    team_stats = TeamStats(player_names_per_team=list(active_mlb_players.keys()))
+    team_stats: TeamStats = TeamStats(
+        player_names_per_team=list(active_mlb_players.keys())
+    )
     (
         team_player_stats,
         active_player_name_ids,
@@ -98,15 +108,15 @@ def test_team_stats_get_team_stats():
     ],
 )
 def test_data_extractor_set_team_ids_and_names(
-    league_name,
-    expected_league_team_ids_name,
-):
-    data_extractor = DataExtractor(league_name=league_name)
+    league_name: str,
+    expected_league_team_ids_name: dict[int, str],
+) -> None:
+    data_extractor: DataExtractor = DataExtractor(league_name=league_name)
 
     data_extractor.set_league_team_rosters_player_names()
     data_extractor.set_team_ids_and_names()
 
-    comparing_elements = [
+    comparing_elements: list[bool] = [
         value == expected_league_team_ids_name[key]
         for key, value in data_extractor.team_id_name_mapping.items()
     ]

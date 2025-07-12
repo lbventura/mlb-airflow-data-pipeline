@@ -11,7 +11,9 @@ SOURCE_LOCATION = os.path.dirname(os.path.abspath(__file__))
 
 # setting "national_league" as the default league name
 LEAGUE_NAME = "national_league"
-LEAGUE_NAME_LOCATION = f"{SOURCE_LOCATION}/league_name_choice.txt"
+LEAGUE_NAME_LOCATION = (
+    "/root/mlb-airflow-data-pipeline/mlb_airflow_data_pipeline/league_name_choice.txt"
+)
 
 # if there is not an ongoing season, this parameter has to be set to the
 # previous year.
@@ -23,9 +25,11 @@ IS_SEASON_STATS = True
 with open(LEAGUE_NAME_LOCATION, "r") as text_file:
     LEAGUE_NAME = text_file.readline().strip()
 
-DATA_FILE_LOCATION = f"{SOURCE_LOCATION}/data/"
+DATA_FILE_LOCATION = "/root/mlb-airflow-data-pipeline/mlb_airflow_data_pipeline/data/"
 
-OUTPUT_FILE_LOCATION = f"{SOURCE_LOCATION}/output/"
+OUTPUT_FILE_LOCATION = (
+    "/root/mlb-airflow-data-pipeline/mlb_airflow_data_pipeline/output/"
+)
 
 # player information fields
 PLAYER_INFORMATION = ["playername", "team_id"]
