@@ -1,5 +1,4 @@
 import argparse
-import logging
 from typing import Optional
 
 import numpy as np
@@ -26,14 +25,10 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     PLAYER_INFORMATION,
 )
 
-# creates a logger
-logging.basicConfig(
-    filename="mlb-airflow-debugger-treatment.log",
-    format="%(asctime)s: %(levelname)s: %(message)s",
-    encoding="utf-8",
-    level=logging.DEBUG,
-    filemode="w",
-)
+from mlb_airflow_data_pipeline.logging_setup import get_logger
+
+# Initialize structured logger
+logger = get_logger("statsapi_treatment", league=LEAGUE_NAME)
 
 DATA_FILTER_THRESHOLD = 0.6
 
@@ -65,8 +60,14 @@ class DataTreater:
 
     def set_output_data_file(self) -> None:
         output_data = self.get_output_data()
-        output_data.to_csv(self.data_paths.path_to_output_data)  # type: ignore
-        logging.info("Generating output file was successful")
+        output_path = self.data_paths.path_to_output_data
+        output_data.to_csv(output_path)  # type: ignore
+        logger.info(
+            "output_file_generated",
+            file_path=output_path,
+            data_shape=output_data.shape,
+            columns=list(output_data.columns[:5]),  # First 5 columns for brevity
+        )
 
     def get_output_data(self) -> pd.DataFrame:
         filtered_data = self.get_filter_data()
@@ -82,26 +83,37 @@ class DataTreater:
             else:
                 filtered_data = function(filtered_data)
 
-        logging.info("Generating output data was successful")
+        logger.info(
+            "data_transformation_completed",
+            transformations_applied=len(
+                [k for k, v in transformation_dict.items() if v]
+            ),
+        )
         return filtered_data
 
     def get_filter_data(self) -> pd.DataFrame:
         filtered_data = filter_data(
             self.get_subset_data(), self.input_parameters.filter_conditions_dict
         )
-        logging.info("Filtering data was successful")
+        logger.info("data_filtering_completed", filtered_shape=filtered_data.shape)
         return filtered_data
 
     def get_subset_data(self) -> pd.DataFrame:
         intermediate_data = self.get_input_data()[self.input_parameters.subset_columns]
-        logging.info(
-            f"Creating sub-dataset columns - {self.input_parameters.subset_columns} - was successful"
+        logger.info(
+            "subset_data_created",
+            subset_columns=self.input_parameters.subset_columns,
+            subset_shape=intermediate_data.shape,
         )
         return intermediate_data
 
     def get_input_data(self) -> pd.DataFrame:
         input_data = pd.read_csv(self.data_paths.path_to_input_data, index_col=0)
-        logging.info("Data input was successful")
+        logger.info(
+            "data_input_loaded",
+            file_path=self.data_paths.path_to_input_data,
+            data_shape=input_data.shape,
+        )
         return input_data
 
 
@@ -123,11 +135,21 @@ def filter_data(input_df: pd.DataFrame, conditions_dict: dict) -> pd.DataFrame:
     return_df = input_df[conditions].copy()
 
     good_data_percentage = len(return_df) / len(input_df)
-    logging.info(f"The percentage of good data is {round(good_data_percentage, 3)}")
+
+    logger.info(
+        "data_quality_check",
+        good_data_percentage=round(good_data_percentage, 3),
+        records_kept=len(return_df),
+        records_total=len(input_df),
+        filter_conditions=conditions_dict,
+    )
 
     if good_data_percentage < DATA_FILTER_THRESHOLD:
-        logging.warning(
-            f"Possible data problem: the percentage of good data, {good_data_percentage}, is below the threshold"
+        logger.warning(
+            "data_quality_below_threshold",
+            good_data_percentage=good_data_percentage,
+            threshold=DATA_FILTER_THRESHOLD,
+            filter_conditions=conditions_dict,
         )
 
     return return_df
@@ -258,48 +280,44 @@ if __name__ == "__main__":
     PITCHER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_pitcher_stats_df.csv"
     DEFENDER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_defender_stats_df.csv"
 
-    logging.info("Data treatment started")
-
-    # batter
-    batter_input_paths = DataPaths(
-        path_to_input_data=DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME,
-        path_to_output_data=DATA_FILE_LOCATION + BATTER_DATA_FILE_NAME,
+    logger.info(
+        "treatment_started",
+        league=LEAGUE_NAME,
+        date=DATE_TIME_EXECUTION,
+        player_types=["batter", "pitcher", "defender"],
     )
 
-    batter_data_treater = DataTreater(
-        data_paths=batter_input_paths, input_parameters=batter_input_data_repr
-    )
+    # Process each player type
+    player_configs = [
+        ("batter", batter_input_data_repr, BATTER_DATA_FILE_NAME),
+        ("pitcher", pitcher_input_data_repr, PITCHER_DATA_FILE_NAME),
+        ("defender", defender_input_data_repr, DEFENDER_DATA_FILE_NAME),
+    ]
 
-    batter_data_treater.set_output_data_file()
+    for player_type, input_params, output_filename in player_configs:
+        logger.info("processing_player_type", player_type=player_type)
 
-    logging.info("Data treatment for batters finished")
+        try:
+            input_paths = DataPaths(
+                path_to_input_data=DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME,
+                path_to_output_data=DATA_FILE_LOCATION + output_filename,
+            )
 
-    # pitcher
-    pitcher_input_paths = DataPaths(
-        path_to_input_data=DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME,
-        path_to_output_data=DATA_FILE_LOCATION + PITCHER_DATA_FILE_NAME,
-    )
+            data_treater = DataTreater(
+                data_paths=input_paths, input_parameters=input_params
+            )
 
-    pitcher_data_treater = DataTreater(
-        data_paths=pitcher_input_paths, input_parameters=pitcher_input_data_repr
-    )
+            data_treater.set_output_data_file()
 
-    pitcher_data_treater.set_output_data_file()
+            logger.info("player_type_completed", player_type=player_type)
 
-    logging.info("Data treatment for pitchers finished")
+        except Exception as e:
+            logger.error(
+                "player_type_failed",
+                player_type=player_type,
+                error=str(e),
+                exc_info=True,
+            )
+            raise
 
-    # defender
-    defender_input_paths = DataPaths(
-        path_to_input_data=DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME,
-        path_to_output_data=DATA_FILE_LOCATION + DEFENDER_DATA_FILE_NAME,
-    )
-
-    defender_data_treater = DataTreater(
-        data_paths=defender_input_paths, input_parameters=defender_input_data_repr
-    )
-
-    defender_data_treater.set_output_data_file()
-
-    logging.info("Data treatment for defenders finished")
-
-    logging.info("Data treatment finished")
+    logger.info("treatment_completed", player_types_processed=len(player_configs))

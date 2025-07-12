@@ -14,6 +14,7 @@ dependencies = [
     "pytest==8.4.1",
     "MLB-StatsAPI==1.9.0",
     "apache-airflow==3.0.2",
+    "structlog>=23.1.0",
 ]
 
 [tool.setuptools.packages.find]

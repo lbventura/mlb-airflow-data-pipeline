@@ -7,6 +7,7 @@ matplotlib.use("Agg")
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     DATA_FILE_LOCATION,
     OUTPUT_FILE_LOCATION,
+    LEAGUE_NAME,
 )
 from mlb_airflow_data_pipeline.statsapi_treatment_script import (
     BATTER_DATA_FILE_NAME,
@@ -14,6 +15,10 @@ from mlb_airflow_data_pipeline.statsapi_treatment_script import (
     PITCHER_DATA_FILE_NAME,
     DataPaths,
 )
+from mlb_airflow_data_pipeline.logging_setup import get_logger
+
+# Initialize structured logger
+logger = get_logger("statsapi_analysis", league=LEAGUE_NAME)
 
 
 class DataPlotter:
@@ -23,16 +28,43 @@ class DataPlotter:
 
     def set_plots(self) -> None:
         input_data = self.get_input_data()
+        logger.info(
+            "visualization_started",
+            data_shape=input_data.shape,
+            variable_pairs_count=len(self.representable_variables),
+        )
 
         for variable_pair in self.representable_variables:
-            scatter_plot(input_data, variable_pair)
-            plt.savefig(
-                self.data_paths.path_to_output_data  # type:ignore
-                + f"_{variable_pair[0]}_{variable_pair[1]}.png"
-            )
+            try:
+                scatter_plot(input_data, variable_pair)
+                if self.data_paths.path_to_output_data:
+                    plot_filename = (
+                        self.data_paths.path_to_output_data
+                        + f"_{variable_pair[0]}_{variable_pair[1]}.png"
+                    )
+                    plt.savefig(plot_filename)
+                    logger.info(
+                        "plot_created",
+                        x_variable=variable_pair[0],
+                        y_variable=variable_pair[1],
+                        file_path=plot_filename,
+                    )
+            except Exception as e:
+                logger.error(
+                    "plot_creation_failed",
+                    x_variable=variable_pair[0],
+                    y_variable=variable_pair[1],
+                    error=str(e),
+                    exc_info=True,
+                )
 
     def get_input_data(self) -> pd.DataFrame:
         input_data = pd.read_csv(self.data_paths.path_to_input_data, index_col=0)
+        logger.info(
+            "visualization_data_loaded",
+            file_path=self.data_paths.path_to_input_data,
+            data_shape=input_data.shape,
+        )
         return input_data
 
 

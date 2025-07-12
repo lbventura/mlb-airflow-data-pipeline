@@ -1,5 +1,10 @@
 import pandas as pd
 
+from mlb_airflow_data_pipeline.logging_setup import get_logger
+
+# Initialize logger for feature utilities
+logger = get_logger("statsapi_feature_utils")
+
 
 def create_plate_appearance_normalization(
     input_df: pd.DataFrame, feature_name_list: list
@@ -17,11 +22,21 @@ def create_plate_appearance_normalization(
         pd.DataFrame
     """
 
+    logger.debug(
+        "plate_appearance_normalization_started",
+        features=feature_name_list,
+        data_shape=input_df.shape,
+    )
+
     for feature_name in feature_name_list:
         input_df[feature_name + "perplateAppearance"] = (
             input_df[feature_name] / input_df["plateAppearances"]
         )
 
+    logger.debug(
+        "plate_appearance_normalization_completed",
+        features_created=len(feature_name_list),
+    )
     return input_df
 
 
@@ -41,11 +56,21 @@ def create_innings_pitched_normalization(
         pd.DataFrame
     """
 
+    logger.debug(
+        "innings_pitched_normalization_started",
+        features=feature_name_list,
+        data_shape=input_df.shape,
+    )
+
     for feature_name in feature_name_list:
         input_df[feature_name + "inningsPitched"] = (
             input_df[feature_name] / input_df["inningsPitched"]
         )
 
+    logger.debug(
+        "innings_pitched_normalization_completed",
+        features_created=len(feature_name_list),
+    )
     return input_df
 
 
@@ -88,6 +113,8 @@ def create_babip(input_df: pd.DataFrame) -> pd.DataFrame:
     Returns:
         pd.DataFrame
     """
+    logger.debug("babip_calculation_started", data_shape=input_df.shape)
+
     input_df["babip"] = (input_df["hits"] - input_df["homeRuns"]) / (
         input_df["atBats"]
         - input_df["strikeOuts"]
@@ -95,6 +122,7 @@ def create_babip(input_df: pd.DataFrame) -> pd.DataFrame:
         + input_df["sacFlies"]
     )  # following MLB's formula
 
+    logger.debug("babip_calculation_completed")
     return input_df
 
 
