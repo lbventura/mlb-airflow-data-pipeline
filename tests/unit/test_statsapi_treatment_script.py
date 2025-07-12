@@ -1,5 +1,6 @@
 import os
 
+import pandas as pd
 import pandas.api.types as pdtypes
 import pytest
 
@@ -15,20 +16,20 @@ from mlb_airflow_data_pipeline.statsapi_treatment_script import (
     batting_stats_list,
 )
 
-CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
+CURRENT_DIR: str = os.path.dirname(os.path.realpath(__file__))
 
-EXAMPLE_DATA_PATH = os.path.join(
+EXAMPLE_DATA_PATH: str = os.path.join(
     CURRENT_DIR, "national_league_example_full_player_stats_df.csv"
 )
 
 
-batter_filter_conditions_dict = {"plateAppearances": 100, "atBats": 50}
+batter_filter_conditions_dict: dict[str, int] = {"plateAppearances": 100, "atBats": 50}
 
-batter_input_paths = DataPaths(
+batter_input_paths: DataPaths = DataPaths(
     path_to_input_data=EXAMPLE_DATA_PATH,
 )
 
-batter_input_data_repr = DataTreaterInputRepresentation(
+batter_input_data_repr: DataTreaterInputRepresentation = DataTreaterInputRepresentation(
     subset_columns=batting_stats_list,
     filter_conditions_dict=batter_filter_conditions_dict,
     transformation_dict=batter_transformation_dict,
@@ -113,7 +114,7 @@ def numeric_features_list() -> list[str]:
     ]
 
 
-def object_features_list():
+def object_features_list() -> list[str]:
     return [
         "atBatsPerHomeRun",
         "babip",
@@ -130,37 +131,37 @@ def object_features_list():
     "is_numeric, feature_list",
     [(True, numeric_features_list()), (False, object_features_list())],
 )
-def test_data_treater_input_data(is_numeric, feature_list):
+def test_data_treater_input_data(is_numeric: bool, feature_list: list[str]) -> None:
     # temporary test until type conversion is implemented
     # checks that pd.read_csv type conversion is working as expected
-    batter_data_treater = DataTreater(
+    batter_data_treater: DataTreater = DataTreater(
         data_paths=batter_input_paths, input_parameters=batter_input_data_repr
     )
 
-    output_df = batter_data_treater.get_input_data()
+    output_df: pd.DataFrame = batter_data_treater.get_input_data()
 
-    output_df_is_numeric_columns = {
+    output_df_is_numeric_columns: dict[str, bool] = {
         col: pdtypes.is_numeric_dtype(output_df[col]) for col in output_df.columns
     }
 
-    extracted_numeric_features = sorted(
+    extracted_numeric_features: list[str] = sorted(
         [
             key
             for key, value in output_df_is_numeric_columns.items()
             if value == is_numeric
         ]
     )
-    expected_numeric_features = feature_list
+    expected_numeric_features: list[str] = feature_list
     assert extracted_numeric_features == expected_numeric_features
 
 
-def test_data_treater_filter_data():
-    batter_data_treater = DataTreater(
+def test_data_treater_filter_data() -> None:
+    batter_data_treater: DataTreater = DataTreater(
         data_paths=batter_input_paths, input_parameters=batter_input_data_repr
     )
-    output_df = batter_data_treater.get_filter_data()
+    output_df: pd.DataFrame = batter_data_treater.get_filter_data()
 
-    expected_output_shape = (129, 30)
+    expected_output_shape: tuple[int, int] = (129, 30)
     assert output_df.shape == expected_output_shape
 
     assert not sum(
@@ -170,13 +171,13 @@ def test_data_treater_filter_data():
     assert not sum(output_df["atBats"] < batter_filter_conditions_dict.get("atBats"))
 
 
-def test_data_treater_get_output_data():
-    batter_data_treater = DataTreater(
+def test_data_treater_get_output_data() -> None:
+    batter_data_treater: DataTreater = DataTreater(
         data_paths=batter_input_paths, input_parameters=batter_input_data_repr
     )
-    output_data = batter_data_treater.get_output_data()
+    output_data: pd.DataFrame = batter_data_treater.get_output_data()
 
-    actual_features = set(output_data.columns)
+    actual_features: set[str] = set(output_data.columns)
 
     # for babip and difstrikeOutsbaseOnBalls, the test
     # is less restrictive than below because these two features
@@ -184,7 +185,7 @@ def test_data_treater_get_output_data():
     assert "babip" in actual_features
     assert "difstrikeOutsbaseOnBalls" in actual_features
 
-    expected_per_plate_features = {
+    expected_per_plate_features: set[str] = {
         ele + "perplateAppearance"
         for ele in batter_input_data_repr.transformation_dict[
             create_plate_appearance_normalization
@@ -193,7 +194,7 @@ def test_data_treater_get_output_data():
 
     assert expected_per_plate_features.difference(actual_features) == set()
 
-    expected_normalized_features = {
+    expected_normalized_features: set[str] = {
         ele + suffix
         for ele in batter_input_data_repr.transformation_dict[create_mean_normalization]
         for suffix in ["_mean", "_std", "_z_score"]
