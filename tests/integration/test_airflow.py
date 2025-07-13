@@ -10,9 +10,11 @@ Note: These tests require a properly configured Airflow environment.
 In CI/CD environments, these tests will be skipped if Airflow is not available.
 """
 
+import json
 import os
 import subprocess
 from datetime import datetime
+import time
 from typing import Callable, TypedDict
 
 import pytest
@@ -48,7 +50,7 @@ def dag_config() -> DagConfig:
 
 
 @pytest.fixture(scope="session")
-def setup_airflow():
+def setup_airflow() -> None:
     """Setup Airflow database and environment for testing."""
     # Skip if running in CI without proper Airflow setup
     if os.environ.get("CI") and not os.environ.get("AIRFLOW_HOME"):
@@ -102,7 +104,7 @@ def setup_airflow():
 
 
 @pytest.fixture
-def run_command(setup_airflow) -> CommandRunner:
+def run_command(setup_airflow: None) -> CommandRunner:
     """Fixture providing a command runner function."""
 
     def _run_command(command: str) -> subprocess.CompletedProcess[str]:
@@ -262,25 +264,49 @@ def test_task_produces_expected_output(
     )
 
 
-def test_complete_integration_workflow(
-    dag_config: DagConfig, run_command: CommandRunner
-) -> None:
-    """Execute the complete integration test workflow following the markdown strategy."""
-    # Step 1: Try to verify DAG accessibility (skip if not in database)
-    details_result = run_command(f"airflow dags details {dag_config['dag_id']}")
-    if (
-        "does not exist in 'dag' table" in details_result.stderr
-        or "could not be found" in details_result.stderr
-    ):
-        pytest.skip("DAG not in database - testing core functionality instead")
+@pytest.mark.manual
+def test_full_dag_execution(dag_config: DagConfig, run_command: CommandRunner) -> None:
+    """Test that executes the full DAG and verifies its completion."""
+    # Trigger the DAG run
+    trigger_command = f"airflow dags trigger {dag_config['dag_id']}"
+    trigger_result = run_command(trigger_command)
+    _assert_command_success(trigger_result, "Failed to trigger DAG run")
 
-    # Step 2: Execute first task (this is the core test)
-    task_command = _build_task_test_command(
-        dag_config["dag_id"], dag_config["first_task_id"], dag_config["test_date"]
+    # Get the run ID from the trigger output
+    list_command = f"airflow dags list-runs {dag_config['dag_id']} --output json"
+    list_result = run_command(list_command)
+    _assert_command_success(list_result, "Failed to list DAG runs")
+
+    try:
+        runs = json.loads(list_result.stdout)
+        if not runs:
+            pytest.fail("No DAG runs found")
+        run_id = runs[0].get("run_id")  # Get the most recent run
+    except json.JSONDecodeError:
+        pytest.fail("Failed to parse DAG runs JSON output")
+    except (IndexError, KeyError):
+        pytest.fail("No DAG runs available or invalid structure")
+
+    assert run_id, "Could not find run ID"
+
+    # Wait for DAG completion with timeout
+    wait_command = f"airflow dags run-state {dag_config['dag_id']} {run_id}"
+    max_wait_seconds = 1200  # 20 minutes timeout
+    start_time = time.time()
+
+    while (time.time() - start_time) < max_wait_seconds:
+        state_result = run_command(wait_command)
+        if "success" in state_result.stdout.lower():
+            break
+        if "failed" in state_result.stdout.lower():
+            pytest.fail("DAG execution failed")
+        time.sleep(60)  # Check every 60 seconds
+    else:
+        pytest.fail(f"DAG execution did not complete within {max_wait_seconds} seconds")
+
+    # Verify DAG completed successfully
+    state_result = run_command(wait_command)
+    _assert_command_success(state_result, "Failed to get DAG state")
+    _assert_content_in_output(
+        "success", state_result.stdout.lower(), "DAG did not complete successfully"
     )
-    task_result = run_command(task_command)
-    _assert_command_success(task_result, "First task execution failed")
-
-    # Step 3: Validate DAG listing works
-    list_result = run_command("airflow dags list")
-    _assert_command_success(list_result, "DAG validation failed")
