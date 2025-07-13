@@ -133,3 +133,6 @@ dmypy.json
 .json
 mlb_airflow_data_pipeline/data/
 mlb_airflow_data_pipeline/output/
+
+# Log files
+logs/

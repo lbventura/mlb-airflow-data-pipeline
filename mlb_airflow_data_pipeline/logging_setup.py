@@ -36,6 +36,7 @@ def setup_logging(
     # Set up log directory
     log_path: Path
     if log_dir is None:
+        # Use relative path from project root for portability
         project_root = Path(__file__).parent.parent
         log_path = project_root / "logs"
     else:
@@ -43,26 +44,28 @@ def setup_logging(
 
     log_path.mkdir(exist_ok=True)
 
+    # Create separate formatters for file and console
+    # File handler with clean JSON format
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_path / "mlb_pipeline.log",
+        maxBytes=10 * 1024 * 1024,  # 10MB
+        backupCount=5,
+        encoding="utf-8",
+    )
+
+    # Console handler
+    console_handler = logging.StreamHandler(sys.stdout)
+
     # Configure stdlib logging
     logging.basicConfig(
         level=getattr(logging, log_level.upper(), logging.INFO),
-        handlers=[
-            # File handler with rotation
-            logging.handlers.RotatingFileHandler(
-                log_path / "mlb_pipeline.log",
-                maxBytes=10 * 1024 * 1024,  # 10MB
-                backupCount=5,
-                encoding="utf-8",
-            ),
-            # Console handler
-            logging.StreamHandler(sys.stdout),
-        ],
+        handlers=[file_handler, console_handler],
+        force=True,  # Override any existing configuration
     )
 
-    # Configure structlog
+    # Configure structlog with JSON for files
     structlog.configure(
         processors=[
-            # Add timestamp
             structlog.stdlib.filter_by_level,
             structlog.stdlib.add_logger_name,
             structlog.stdlib.add_log_level,
@@ -70,10 +73,8 @@ def setup_logging(
             structlog.processors.TimeStamper(fmt="iso"),
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
-            # JSON output for file, human-readable for console
-            structlog.processors.JSONRenderer()
-            if log_dir
-            else structlog.dev.ConsoleRenderer(),
+            # Use JSON renderer for clean, structured logs
+            structlog.processors.JSONRenderer(),
         ],
         context_class=dict,
         logger_factory=structlog.stdlib.LoggerFactory(),
