@@ -19,13 +19,19 @@ SEASON_YEAR = 2023
 # set this parameter to False to fetch player career stats
 IS_SEASON_STATS = True
 
-# read the league name set at runtime
-with open(LEAGUE_NAME_LOCATION, "r") as text_file:
-    LEAGUE_NAME = text_file.readline().strip()
+# read the league name set at runtime, fallback to default if file doesn't exist
+try:
+    with open(LEAGUE_NAME_LOCATION, "r") as text_file:
+        LEAGUE_NAME = text_file.readline().strip()
+except FileNotFoundError:
+    # Keep the default value if file doesn't exist (useful for testing)
+    pass
 
-DATA_FILE_LOCATION = f"{SOURCE_LOCATION}/data/"
+DATA_FILE_LOCATION = "/root/mlb-airflow-data-pipeline/mlb_airflow_data_pipeline/data/"
 
-OUTPUT_FILE_LOCATION = f"{SOURCE_LOCATION}/output/"
+OUTPUT_FILE_LOCATION = (
+    "/root/mlb-airflow-data-pipeline/mlb_airflow_data_pipeline/output/"
+)
 
 # player information fields
 PLAYER_INFORMATION = ["playername", "team_id"]
