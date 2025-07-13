@@ -36,7 +36,9 @@ def setup_logging(
     # Set up log directory
     log_path: Path
     if log_dir is None:
-        log_path = Path("/root/mlb-airflow-data-pipeline/logs")
+        # Use relative path from project root for portability
+        project_root = Path(__file__).parent.parent
+        log_path = project_root / "logs"
     else:
         log_path = Path(log_dir)
 
