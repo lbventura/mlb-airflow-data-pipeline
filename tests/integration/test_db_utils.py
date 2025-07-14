@@ -14,162 +14,183 @@ from mlb_airflow_data_pipeline.db_utils import (
 )
 
 
-class TestDbUtilsIntegration:
-    def test_full_workflow(self):
-        """Test the complete workflow of database operations."""
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp_file:
-            db_file = tmp_file.name
+@pytest.fixture
+def temp_db_file():
+    """Create a temporary database file for integration testing."""
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp_file:
+        db_file = tmp_file.name
+    yield db_file
+    Path(db_file).unlink()
 
-        try:
-            conn = create_connection(db_file)
 
-            create_table_sql = """
-                CREATE TABLE player_stats (
-                    player_id INTEGER,
-                    player_name TEXT,
-                    team_name TEXT,
-                    hits INTEGER,
-                    runs INTEGER,
-                    avg REAL
-                );
-            """
-            create_table(conn, create_table_sql)
+@pytest.fixture
+def db_connection(temp_db_file):
+    """Create a database connection for integration testing."""
+    conn = create_connection(temp_db_file)
+    yield conn
+    conn.close()
 
-            player_stats_df = pd.DataFrame(
-                {
-                    "player_id": [1, 2, 3],
-                    "player_name": [
-                        "Aaron Judge",
-                        "Mookie Betts",
-                        "Vladimir Guerrero Jr.",
-                    ],
-                    "team_name": ["Yankees", "Dodgers", "Blue Jays"],
-                    "hits": [162, 158, 175],
-                    "runs": [133, 117, 97],
-                    "avg": [0.311, 0.269, 0.274],
-                }
-            )
 
-            insert_dataframe(conn, "player_stats", player_stats_df)
+@pytest.fixture
+def player_stats_table_sql():
+    """SQL for creating a player stats table."""
+    return """
+        CREATE TABLE player_stats (
+            player_id INTEGER,
+            player_name TEXT,
+            team_name TEXT,
+            hits INTEGER,
+            runs INTEGER,
+            avg REAL
+        );
+    """
 
-            retrieved_df = read_table(conn, "player_stats")
 
-            assert len(retrieved_df) == 3
-            assert list(retrieved_df.columns) == [
-                "player_id",
-                "player_name",
-                "team_name",
-                "hits",
-                "runs",
-                "avg",
-            ]
-            assert retrieved_df["player_name"].tolist() == [
+@pytest.fixture
+def sample_player_stats():
+    """Create sample player statistics DataFrame."""
+    return pd.DataFrame(
+        {
+            "player_id": [1, 2, 3],
+            "player_name": ["Aaron Judge", "Mookie Betts", "Vladimir Guerrero Jr."],
+            "team_name": ["Yankees", "Dodgers", "Blue Jays"],
+            "hits": [162, 158, 175],
+            "runs": [133, 117, 97],
+            "avg": [0.311, 0.269, 0.274],
+        }
+    )
+
+
+@pytest.fixture
+def sample_league_standings():
+    """Create sample league standings DataFrame."""
+    return pd.DataFrame(
+        {
+            "team_name": ["Yankees", "Dodgers", "Blue Jays"],
+            "wins": [99, 100, 92],
+            "losses": [63, 62, 70],
+            "division": ["AL East", "NL West", "AL East"],
+        }
+    )
+
+
+@pytest.fixture
+def updated_player_stats():
+    """Create updated player statistics DataFrame."""
+    return pd.DataFrame(
+        {
+            "player_id": [1, 2, 3, 4],
+            "player_name": [
                 "Aaron Judge",
                 "Mookie Betts",
                 "Vladimir Guerrero Jr.",
-            ]
-            assert retrieved_df["hits"].tolist() == [162, 158, 175]
+                "Mike Trout",
+            ],
+            "team_name": ["Yankees", "Dodgers", "Blue Jays", "Angels"],
+            "hits": [162, 158, 175, 140],
+            "runs": [133, 117, 97, 95],
+            "avg": [0.311, 0.269, 0.274, 0.283],
+        }
+    )
 
-            updated_stats_df = pd.DataFrame(
-                {
-                    "player_id": [1, 2, 3, 4],
-                    "player_name": [
-                        "Aaron Judge",
-                        "Mookie Betts",
-                        "Vladimir Guerrero Jr.",
-                        "Mike Trout",
-                    ],
-                    "team_name": ["Yankees", "Dodgers", "Blue Jays", "Angels"],
-                    "hits": [162, 158, 175, 140],
-                    "runs": [133, 117, 97, 95],
-                    "avg": [0.311, 0.269, 0.274, 0.283],
-                }
-            )
 
-            insert_dataframe(conn, "player_stats", updated_stats_df)
+def test_full_database_workflow(
+    db_connection, player_stats_table_sql, sample_player_stats, updated_player_stats
+):
+    """Test the complete workflow of database operations."""
+    create_table(db_connection, player_stats_table_sql)
 
-            final_df = read_table(conn, "player_stats")
+    insert_dataframe(db_connection, "player_stats", sample_player_stats)
 
-            assert len(final_df) == 4
-            assert "Mike Trout" in final_df["player_name"].tolist()
+    retrieved_df = read_table(db_connection, "player_stats")
 
-            conn.close()
+    assert len(retrieved_df) == 3
+    assert list(retrieved_df.columns) == [
+        "player_id",
+        "player_name",
+        "team_name",
+        "hits",
+        "runs",
+        "avg",
+    ]
+    assert retrieved_df["player_name"].tolist() == [
+        "Aaron Judge",
+        "Mookie Betts",
+        "Vladimir Guerrero Jr.",
+    ]
+    assert retrieved_df["hits"].tolist() == [162, 158, 175]
 
-        finally:
-            Path(db_file).unlink()
+    insert_dataframe(db_connection, "player_stats", updated_player_stats)
 
-    def test_multiple_tables_workflow(self):
-        """Test working with multiple tables."""
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp_file:
-            db_file = tmp_file.name
+    final_df = read_table(db_connection, "player_stats")
 
-        try:
-            conn = create_connection(db_file)
+    assert len(final_df) == 4
+    assert "Mike Trout" in final_df["player_name"].tolist()
 
-            league_standings_df = pd.DataFrame(
-                {
-                    "team_name": ["Yankees", "Dodgers", "Blue Jays"],
-                    "wins": [99, 100, 92],
-                    "losses": [63, 62, 70],
-                    "division": ["AL East", "NL West", "AL East"],
-                }
-            )
 
-            player_stats_df = pd.DataFrame(
-                {
-                    "player_name": [
-                        "Aaron Judge",
-                        "Mookie Betts",
-                        "Vladimir Guerrero Jr.",
-                    ],
-                    "team_name": ["Yankees", "Dodgers", "Blue Jays"],
-                    "hits": [162, 158, 175],
-                }
-            )
+def test_multiple_tables_workflow(
+    db_connection, sample_league_standings, sample_player_stats
+):
+    """Test working with multiple tables in the same database."""
+    insert_dataframe(db_connection, "league_standings", sample_league_standings)
+    insert_dataframe(db_connection, "player_stats", sample_player_stats)
 
-            insert_dataframe(conn, "league_standings", league_standings_df)
-            insert_dataframe(conn, "player_stats", player_stats_df)
+    standings_result = read_table(db_connection, "league_standings")
+    player_result = read_table(db_connection, "player_stats")
 
-            standings_result = read_table(conn, "league_standings")
-            player_result = read_table(conn, "player_stats")
+    assert len(standings_result) == 3
+    assert len(player_result) == 3
+    assert "wins" in standings_result.columns
+    assert "hits" in player_result.columns
 
-            assert len(standings_result) == 3
-            assert len(player_result) == 3
-            assert "wins" in standings_result.columns
-            assert "hits" in player_result.columns
 
-            conn.close()
+def test_database_path_creation():
+    """Test that the database path function creates the data directory."""
+    db_path = get_database_path()
 
-        finally:
-            Path(db_file).unlink()
+    assert isinstance(db_path, str)
+    assert db_path.endswith("mlb_data.db")
+    assert "/data/" in db_path
 
-    def test_database_path_creation(self):
-        """Test that the database path function creates the data directory."""
-        db_path = get_database_path()
+    data_dir = Path(db_path).parent
+    assert data_dir.exists()
+    assert data_dir.is_dir()
 
-        assert isinstance(db_path, str)
-        assert db_path.endswith("mlb_data.db")
-        assert "/data/" in db_path
 
-        data_dir = Path(db_path).parent
-        assert data_dir.exists()
-        assert data_dir.is_dir()
+def test_error_handling_workflow(db_connection):
+    """Test error handling in integrated database workflow."""
+    with pytest.raises(Exception, match="Failed to read table"):
+        read_table(db_connection, "nonexistent_table")
 
-    def test_error_handling_integration(self):
-        """Test error handling in integrated workflow."""
-        with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp_file:
-            db_file = tmp_file.name
+    with pytest.raises(sqlite3.Error, match="Failed to create table"):
+        create_table(db_connection, "INVALID SQL")
 
-        try:
-            conn = create_connection(db_file)
 
-            with pytest.raises(Exception, match="Failed to read table"):
-                read_table(conn, "nonexistent_table")
+def test_empty_dataframe_integration(db_connection):
+    """Test integration with empty DataFrames."""
+    empty_df = pd.DataFrame({"id": [], "name": []})
 
-            with pytest.raises(sqlite3.Error, match="Failed to create table"):
-                create_table(conn, "INVALID SQL")
+    insert_dataframe(db_connection, "empty_test", empty_df)
+    result_df = read_table(db_connection, "empty_test")
 
-            conn.close()
+    assert len(result_df) == 0
+    assert list(result_df.columns) == ["id", "name"]
 
-        finally:
-            Path(db_file).unlink()
+
+def test_large_dataset_integration(db_connection):
+    """Test integration with larger datasets."""
+    large_df = pd.DataFrame(
+        {
+            "id": range(1000),
+            "value": [f"item_{i}" for i in range(1000)],
+            "score": [i * 0.1 for i in range(1000)],
+        }
+    )
+
+    insert_dataframe(db_connection, "large_table", large_df)
+    result_df = read_table(db_connection, "large_table")
+
+    assert len(result_df) == 1000
+    assert result_df["id"].max() == 999
+    assert result_df["value"].iloc[0] == "item_0"
+    assert result_df["score"].iloc[999] == 99.9

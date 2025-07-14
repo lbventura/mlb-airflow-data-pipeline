@@ -4,7 +4,6 @@ import pandas as pd
 import statsapi
 
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
-    DATA_FILE_LOCATION,
     IS_SEASON_STATS,
     LEAGUE_DIVISION_MAPPING,
     LEAGUE_MAPPING,
@@ -13,6 +12,11 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     expected_output_columns,
 )
 from mlb_airflow_data_pipeline.logging_setup import get_logger
+from mlb_airflow_data_pipeline.db_utils import (
+    create_connection,
+    get_database_path,
+    insert_dataframe,
+)
 
 DATE_TIME_EXECUTION = datetime.today().strftime("%Y-%m-%d")
 
@@ -257,6 +261,9 @@ class DataExtractor:
 if __name__ == "__main__":
     logger.info("extraction_started", league=LEAGUE_NAME, date=DATE_TIME_EXECUTION)
 
+    db_path = get_database_path()
+    conn = create_connection(db_path)
+
     data_extractor = DataExtractor(league_name=LEAGUE_NAME)
 
     data_extractor.set_league_team_rosters_player_names()
@@ -264,9 +271,10 @@ if __name__ == "__main__":
         "league_standings_loaded", standings_shape=data_extractor.league_standings.shape
     )
 
-    standings_path = DATA_FILE_LOCATION + LEAGUE_STANDINGS_FILE_NAME
-    data_extractor.league_standings.to_csv(standings_path)
-    logger.info("league_standings_saved", file_path=standings_path)
+    insert_dataframe(conn, "league_standings", data_extractor.league_standings)
+    logger.info(
+        "league_standings_saved", database_path=db_path, table="league_standings"
+    )
 
     data_extractor.set_team_ids_and_names()
     logger.info(
@@ -279,8 +287,7 @@ if __name__ == "__main__":
         failed_teams,
     ) = data_extractor.get_player_stats_per_league()
 
-    player_stats_path = DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME
-    league_player_team_stats_df.to_csv(player_stats_path)
+    insert_dataframe(conn, "player_stats", league_player_team_stats_df)
 
     logger.info(
         "extraction_completed",
@@ -289,7 +296,8 @@ if __name__ == "__main__":
             len(players) for players in inactive_players_per_team.values()
         ),
         failed_teams_count=len(failed_teams),
-        file_path=player_stats_path,
+        database_path=db_path,
+        table="player_stats",
     )
 
     if inactive_players_per_team:
@@ -299,3 +307,5 @@ if __name__ == "__main__":
 
     if failed_teams:
         logger.error("teams_extraction_failed", failed_teams=failed_teams)
+
+    conn.close()
