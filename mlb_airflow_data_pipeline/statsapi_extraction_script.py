@@ -262,50 +262,48 @@ if __name__ == "__main__":
     logger.info("extraction_started", league=LEAGUE_NAME, date=DATE_TIME_EXECUTION)
 
     db_path = get_database_path()
-    conn = create_connection(db_path)
+    with create_connection(db_path) as conn:
+        data_extractor = DataExtractor(league_name=LEAGUE_NAME)
 
-    data_extractor = DataExtractor(league_name=LEAGUE_NAME)
-
-    data_extractor.set_league_team_rosters_player_names()
-    logger.info(
-        "league_standings_loaded", standings_shape=data_extractor.league_standings.shape
-    )
-
-    insert_dataframe(conn, "league_standings", data_extractor.league_standings)
-    logger.info(
-        "league_standings_saved", database_path=db_path, table="league_standings"
-    )
-
-    data_extractor.set_team_ids_and_names()
-    logger.info(
-        "team_mapping_created", teams_count=len(data_extractor.team_id_name_mapping)
-    )
-
-    (
-        league_player_team_stats_df,
-        inactive_players_per_team,
-        failed_teams,
-    ) = data_extractor.get_player_stats_per_league()
-
-    insert_dataframe(conn, "player_stats", league_player_team_stats_df)
-
-    logger.info(
-        "extraction_completed",
-        players_total=len(league_player_team_stats_df),
-        inactive_players_count=sum(
-            len(players) for players in inactive_players_per_team.values()
-        ),
-        failed_teams_count=len(failed_teams),
-        database_path=db_path,
-        table="player_stats",
-    )
-
-    if inactive_players_per_team:
-        logger.warning(
-            "inactive_players_found", inactive_players=inactive_players_per_team
+        data_extractor.set_league_team_rosters_player_names()
+        logger.info(
+            "league_standings_loaded",
+            standings_shape=data_extractor.league_standings.shape,
         )
 
-    if failed_teams:
-        logger.error("teams_extraction_failed", failed_teams=failed_teams)
+        insert_dataframe(conn, "league_standings", data_extractor.league_standings)
+        logger.info(
+            "league_standings_saved", database_path=db_path, table="league_standings"
+        )
 
-    conn.close()
+        data_extractor.set_team_ids_and_names()
+        logger.info(
+            "team_mapping_created", teams_count=len(data_extractor.team_id_name_mapping)
+        )
+
+        (
+            league_player_team_stats_df,
+            inactive_players_per_team,
+            failed_teams,
+        ) = data_extractor.get_player_stats_per_league()
+
+        insert_dataframe(conn, "player_stats", league_player_team_stats_df)
+
+        logger.info(
+            "extraction_completed",
+            players_total=len(league_player_team_stats_df),
+            inactive_players_count=sum(
+                len(players) for players in inactive_players_per_team.values()
+            ),
+            failed_teams_count=len(failed_teams),
+            database_path=db_path,
+            table="player_stats",
+        )
+
+        if inactive_players_per_team:
+            logger.warning(
+                "inactive_players_found", inactive_players=inactive_players_per_team
+            )
+
+        if failed_teams:
+            logger.error("teams_extraction_failed", failed_teams=failed_teams)

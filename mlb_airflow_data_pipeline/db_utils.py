@@ -1,16 +1,19 @@
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 import pandas as pd
 
 
-def create_connection(db_file: str) -> sqlite3.Connection:
+@contextmanager
+def create_connection(db_file: str) -> Iterator[sqlite3.Connection]:
     """Creates a connection to the SQLite database.
 
     Args:
         db_file: Path to the SQLite database file
 
-    Returns:
+    Yields:
         sqlite3.Connection: Database connection object
 
     Raises:
@@ -18,9 +21,11 @@ def create_connection(db_file: str) -> sqlite3.Connection:
     """
     try:
         conn = sqlite3.connect(db_file)
-        return conn
+        yield conn
     except sqlite3.Error as e:
         raise sqlite3.Error(f"Failed to create database connection: {e}")
+    finally:
+        conn.close()
 
 
 def create_table(conn: sqlite3.Connection, create_table_sql: str) -> None:
@@ -44,7 +49,7 @@ def create_table(conn: sqlite3.Connection, create_table_sql: str) -> None:
 def insert_dataframe(
     conn: sqlite3.Connection, table_name: str, df: pd.DataFrame
 ) -> None:
-    """Inserts a pandas DataFrame into a table.
+    """Inserts a pandas DataFrame into a table by appending rows.
 
     Args:
         conn: Database connection object
@@ -55,7 +60,7 @@ def insert_dataframe(
         sqlite3.Error: If insertion fails
     """
     try:
-        df.to_sql(table_name, conn, if_exists="replace", index=False)
+        df.to_sql(table_name, conn, if_exists="append", index=False)
         conn.commit()
     except sqlite3.Error as e:
         raise sqlite3.Error(f"Failed to insert DataFrame into table {table_name}: {e}")
@@ -92,6 +97,6 @@ def get_database_path() -> str:
         str: Path to the database file in the data directory
     """
     current_dir = Path(__file__).parent
-    data_dir = current_dir / "data"
+    data_dir = current_dir / "db_data"
     data_dir.mkdir(exist_ok=True)
     return str(data_dir / "mlb_data.db")
