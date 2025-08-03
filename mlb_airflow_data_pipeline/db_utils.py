@@ -54,7 +54,7 @@ def insert_dataframe(
     conn: sqlite3.Connection,
     table_name: str,
     df: pd.DataFrame,
-    mode: Literal["fail", "replace", "append"] | None = "replace",
+    mode: Literal["fail", "replace", "append"] | None = "append",
 ) -> None:
     """Inserts a pandas DataFrame into a table.
 
@@ -66,6 +66,7 @@ def insert_dataframe(
     Raises:
         sqlite3.Error: If insertion fails
     """
+    assert mode is not None, "Mode must be one of 'fail', 'replace', or 'append'."
     try:
         df.to_sql(table_name, conn, if_exists=mode, index=False)
         conn.commit()

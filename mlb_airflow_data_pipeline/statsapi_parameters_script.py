@@ -212,6 +212,7 @@ def expected_output_columns() -> list[str]:
             "inheritedRunners",
             "inheritedRunnersScored",
             "team_id",
+            "date",
         ]
     )
 

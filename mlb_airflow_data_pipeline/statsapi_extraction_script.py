@@ -152,6 +152,7 @@ class DataExtractor:
                     exc_info=True,
                 )
         player_stats = pd.concat(league_player_team_stats.values())
+        player_stats["date"] = DATE_TIME_EXECUTION
 
         assert sorted(player_stats.columns.to_list()) == expected_output_columns()
 
@@ -234,6 +235,7 @@ class DataExtractor:
             league_list.append(division_results)
 
         league_standings = pd.concat(league_list, axis=0)
+        league_standings["date"] = DATE_TIME_EXECUTION
         self.league_standings = league_standings
 
     def set_league_team_rosters_player_names(self) -> None:

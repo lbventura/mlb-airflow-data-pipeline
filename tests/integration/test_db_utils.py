@@ -78,17 +78,14 @@ def updated_player_stats() -> pd.DataFrame:
     """Create updated player statistics DataFrame."""
     return pd.DataFrame(
         {
-            "player_id": [1, 2, 3, 4],
+            "player_id": [4],
             "player_name": [
-                "Aaron Judge",
-                "Mookie Betts",
-                "Vladimir Guerrero Jr.",
                 "Mike Trout",
             ],
-            "team_name": ["Yankees", "Dodgers", "Blue Jays", "Angels"],
-            "hits": [162, 158, 175, 140],
-            "runs": [133, 117, 97, 95],
-            "avg": [0.311, 0.269, 0.274, 0.283],
+            "team_name": ["Angels"],
+            "hits": [140],
+            "runs": [95],
+            "avg": [0.283],
         }
     )
 
