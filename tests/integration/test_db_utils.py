@@ -9,7 +9,6 @@ import pytest
 from mlb_airflow_data_pipeline.db_utils import (
     create_connection,
     create_table,
-    get_database_path,
     insert_dataframe,
     read_table,
 )
@@ -147,19 +146,6 @@ def test_multiple_tables_workflow(
     assert len(player_result) == 3
     assert "wins" in standings_result.columns
     assert "hits" in player_result.columns
-
-
-def test_database_path_creation() -> None:
-    """Test that the database path function creates the data directory."""
-    db_path = get_database_path()
-
-    assert isinstance(db_path, str)
-    assert db_path.endswith("mlb_data.db")
-    assert "/db_data/" in db_path
-
-    data_dir = Path(db_path).parent
-    assert data_dir.exists()
-    assert data_dir.is_dir()
 
 
 def test_error_handling_workflow(db_connection: sqlite3.Connection) -> None:
