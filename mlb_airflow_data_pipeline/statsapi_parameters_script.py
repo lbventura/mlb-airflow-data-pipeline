@@ -27,7 +27,9 @@ except FileNotFoundError:
     # Keep the default value if file doesn't exist (useful for testing)
     pass
 
-DATA_FILE_LOCATION = "/root/mlb-airflow-data-pipeline/mlb_airflow_data_pipeline/data/"
+DATA_FILE_LOCATION = (
+    "/root/mlb-airflow-data-pipeline/mlb_airflow_data_pipeline/db_data/"
+)
 
 OUTPUT_FILE_LOCATION = (
     "/root/mlb-airflow-data-pipeline/mlb_airflow_data_pipeline/output/"

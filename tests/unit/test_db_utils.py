@@ -2,7 +2,6 @@ import sqlite3
 import tempfile
 from pathlib import Path
 from typing import Iterator
-from unittest.mock import MagicMock, patch
 
 import pandas as pd
 import pytest
@@ -10,7 +9,6 @@ import pytest
 from mlb_airflow_data_pipeline.db_utils import (
     create_connection,
     create_table,
-    get_database_path,
     insert_dataframe,
     read_table,
 )
@@ -117,13 +115,13 @@ def test_insert_dataframe_append_not_replace(
     new_df = pd.DataFrame({"id": [3, 4], "name": ["Charlie", "David"]})
 
     insert_dataframe(db_connection, "test_table", original_df)
-    insert_dataframe(db_connection, "test_table", new_df)
+    insert_dataframe(db_connection, "test_table", new_df, mode="append")
 
     cursor = db_connection.cursor()
     cursor.execute("SELECT COUNT(*) FROM test_table")
     count = cursor.fetchone()[0]
 
-    assert count == 2
+    assert count == 4
 
 
 def test_insert_dataframe_empty_dataframe(
@@ -167,19 +165,3 @@ def test_read_table_empty_table(
 
     assert len(result_df) == 0
     assert list(result_df.columns) == ["id", "name"]
-
-
-@patch("mlb_airflow_data_pipeline.db_utils.Path")
-def test_get_database_path(mock_path: MagicMock) -> None:
-    """Test database path generation."""
-    mock_file = mock_path(__file__)
-    mock_parent = mock_file.parent
-    mock_data_dir = mock_parent / "data"
-    mock_data_dir.mkdir.return_value = None
-    mock_db_path = mock_data_dir / "mlb_data.db"
-    mock_db_path.__str__.return_value = "/path/to/data/mlb_data.db"
-
-    result = get_database_path()
-
-    mock_data_dir.mkdir.assert_called_once_with(exist_ok=True)
-    assert result == "/path/to/data/mlb_data.db"

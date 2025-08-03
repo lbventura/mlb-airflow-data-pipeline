@@ -1,9 +1,11 @@
 import sqlite3
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
+from typing import Iterator, Literal
 
 import pandas as pd
+
+from mlb_airflow_data_pipeline.statsapi_parameters_script import DATA_FILE_LOCATION
 
 
 @contextmanager
@@ -19,13 +21,15 @@ def create_connection(db_file: str) -> Iterator[sqlite3.Connection]:
     Raises:
         sqlite3.Error: If connection fails
     """
+    conn = None
     try:
         conn = sqlite3.connect(db_file)
         yield conn
     except sqlite3.Error as e:
         raise sqlite3.Error(f"Failed to create database connection: {e}")
     finally:
-        conn.close()
+        if conn:
+            conn.close()
 
 
 def create_table(conn: sqlite3.Connection, create_table_sql: str) -> None:
@@ -47,9 +51,12 @@ def create_table(conn: sqlite3.Connection, create_table_sql: str) -> None:
 
 
 def insert_dataframe(
-    conn: sqlite3.Connection, table_name: str, df: pd.DataFrame
+    conn: sqlite3.Connection,
+    table_name: str,
+    df: pd.DataFrame,
+    mode: Literal["fail", "replace", "append"] | None = "replace",
 ) -> None:
-    """Inserts a pandas DataFrame into a table by appending rows.
+    """Inserts a pandas DataFrame into a table.
 
     Args:
         conn: Database connection object
@@ -60,7 +67,7 @@ def insert_dataframe(
         sqlite3.Error: If insertion fails
     """
     try:
-        df.to_sql(table_name, conn, if_exists="append", index=False)
+        df.to_sql(table_name, conn, if_exists=mode, index=False)
         conn.commit()
     except sqlite3.Error as e:
         raise sqlite3.Error(f"Failed to insert DataFrame into table {table_name}: {e}")
@@ -96,7 +103,10 @@ def get_database_path() -> str:
     Returns:
         str: Path to the database file in the data directory
     """
-    current_dir = Path(__file__).parent
-    data_dir = current_dir / "db_data"
+    data_dir = Path(DATA_FILE_LOCATION)
     data_dir.mkdir(exist_ok=True)
-    return str(data_dir / "mlb_data.db")
+    db_path = data_dir / "mlb_data.db"
+    if not db_path.exists():
+        conn = sqlite3.connect(db_path)
+        conn.close()
+    return str(db_path)

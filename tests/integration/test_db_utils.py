@@ -18,7 +18,7 @@ from mlb_airflow_data_pipeline.db_utils import (
 @pytest.fixture
 def temp_db_file() -> Iterator[str]:
     """Create a temporary database file for integration testing."""
-    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp_file:
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=True) as tmp_file:
         db_file = tmp_file.name
     yield db_file
     Path(db_file).unlink()
@@ -155,7 +155,7 @@ def test_database_path_creation() -> None:
 
     assert isinstance(db_path, str)
     assert db_path.endswith("mlb_data.db")
-    assert "/data/" in db_path
+    assert "/db_data/" in db_path
 
     data_dir = Path(db_path).parent
     assert data_dir.exists()
