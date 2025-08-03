@@ -1,5 +1,7 @@
+import sqlite3
 import tempfile
 from pathlib import Path
+from typing import Iterator
 from unittest.mock import patch
 
 import pandas as pd
@@ -14,7 +16,7 @@ from mlb_airflow_data_pipeline.statsapi_extraction_script import DataExtractor
 
 
 @pytest.fixture
-def temp_db_file():
+def temp_db_file() -> Iterator[str]:
     """Create a temporary database file for extraction testing."""
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp_file:
         db_file = tmp_file.name
@@ -23,15 +25,14 @@ def temp_db_file():
 
 
 @pytest.fixture
-def db_connection(temp_db_file):
+def db_connection(temp_db_file: str) -> Iterator[sqlite3.Connection]:
     """Create a database connection for extraction testing."""
-    conn = create_connection(temp_db_file)
-    yield conn
-    conn.close()
+    with create_connection(temp_db_file) as conn:
+        yield conn
 
 
 @pytest.fixture
-def sample_standings_data():
+def sample_standings_data() -> pd.DataFrame:
     """Create sample league standings data for testing."""
     return pd.DataFrame(
         {
@@ -44,7 +45,7 @@ def sample_standings_data():
 
 
 @pytest.fixture
-def sample_player_data():
+def sample_player_data() -> pd.DataFrame:
     """Create sample player statistics data for testing."""
     return pd.DataFrame(
         {
@@ -58,37 +59,40 @@ def sample_player_data():
 
 
 def test_extraction_script_database_integration(
-    temp_db_file, sample_standings_data, sample_player_data
-):
+    temp_db_file: str,
+    sample_standings_data: pd.DataFrame,
+    sample_player_data: pd.DataFrame,
+) -> None:
     """Test that the extraction script works with database storage."""
     with patch(
         "mlb_airflow_data_pipeline.statsapi_extraction_script.get_database_path"
     ) as mock_db_path:
         mock_db_path.return_value = temp_db_file
 
-        conn = create_connection(temp_db_file)
+        with create_connection(temp_db_file) as conn:
+            insert_dataframe(conn, "league_standings", sample_standings_data)
+            insert_dataframe(conn, "player_stats", sample_player_data)
 
-        insert_dataframe(conn, "league_standings", sample_standings_data)
-        insert_dataframe(conn, "player_stats", sample_player_data)
+            retrieved_standings = read_table(conn, "league_standings")
+            retrieved_player_stats = read_table(conn, "player_stats")
 
-        retrieved_standings = read_table(conn, "league_standings")
-        retrieved_player_stats = read_table(conn, "player_stats")
+            assert len(retrieved_standings) == 3
+            assert len(retrieved_player_stats) == 3
+            assert "team_id" in retrieved_standings.columns
+            assert "playername" in retrieved_player_stats.columns
+            assert retrieved_standings["name"].tolist() == [
+                "Yankees",
+                "Mets",
+                "Orioles",
+            ]
+            assert retrieved_player_stats["playername"].tolist() == [
+                "Aaron Judge",
+                "Pete Alonso",
+                "Ryan Mountcastle",
+            ]
 
-        assert len(retrieved_standings) == 3
-        assert len(retrieved_player_stats) == 3
-        assert "team_id" in retrieved_standings.columns
-        assert "playername" in retrieved_player_stats.columns
-        assert retrieved_standings["name"].tolist() == ["Yankees", "Mets", "Orioles"]
-        assert retrieved_player_stats["playername"].tolist() == [
-            "Aaron Judge",
-            "Pete Alonso",
-            "Ryan Mountcastle",
-        ]
 
-        conn.close()
-
-
-def test_data_extractor_creates_valid_dataframes():
+def test_data_extractor_creates_valid_dataframes() -> None:
     """Test that DataExtractor creates DataFrames compatible with database storage."""
     data_extractor = DataExtractor(league_name="american_league")
 
@@ -101,25 +105,26 @@ def test_data_extractor_creates_valid_dataframes():
     assert "name" in standings_df.columns
 
 
-def test_data_extractor_database_compatibility(temp_db_file):
+def test_data_extractor_database_compatibility(temp_db_file: str) -> None:
     """Test that DataExtractor output is compatible with database storage."""
     data_extractor = DataExtractor(league_name="american_league")
     data_extractor.set_league_division_standings()
 
-    conn = create_connection(temp_db_file)
+    with create_connection(temp_db_file) as conn:
+        insert_dataframe(conn, "test_standings", data_extractor.league_standings)
 
-    insert_dataframe(conn, "test_standings", data_extractor.league_standings)
-
-    retrieved_df = read_table(conn, "test_standings")
-    assert len(retrieved_df) == len(data_extractor.league_standings)
-    assert list(retrieved_df.columns) == list(data_extractor.league_standings.columns)
-
-    conn.close()
+        retrieved_df = read_table(conn, "test_standings")
+        assert len(retrieved_df) == len(data_extractor.league_standings)
+        assert list(retrieved_df.columns) == list(
+            data_extractor.league_standings.columns
+        )
 
 
 def test_database_operations_with_mock_data(
-    db_connection, sample_standings_data, sample_player_data
-):
+    db_connection: sqlite3.Connection,
+    sample_standings_data: pd.DataFrame,
+    sample_player_data: pd.DataFrame,
+) -> None:
     """Test database operations with mock extraction data."""
     insert_dataframe(db_connection, "league_standings", sample_standings_data)
     insert_dataframe(db_connection, "player_stats", sample_player_data)
@@ -133,7 +138,7 @@ def test_database_operations_with_mock_data(
     assert player_result["hits"].tolist() == [162, 146, 138]
 
 
-def test_extraction_data_types_compatibility(db_connection):
+def test_extraction_data_types_compatibility(db_connection: sqlite3.Connection) -> None:
     """Test that extraction script data types are compatible with database storage."""
     test_data = pd.DataFrame(
         {
@@ -153,7 +158,7 @@ def test_extraction_data_types_compatibility(db_connection):
     assert result["avg"].dtype in ["float64", "float32"]
 
 
-def test_large_extraction_dataset_simulation(db_connection):
+def test_large_extraction_dataset_simulation(db_connection: sqlite3.Connection) -> None:
     """Test database operations with simulated large extraction dataset."""
     large_player_stats = pd.DataFrame(
         {

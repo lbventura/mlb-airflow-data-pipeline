@@ -1,6 +1,7 @@
 import sqlite3
 import tempfile
 from pathlib import Path
+from typing import Iterator
 
 import pandas as pd
 import pytest
@@ -15,7 +16,7 @@ from mlb_airflow_data_pipeline.db_utils import (
 
 
 @pytest.fixture
-def temp_db_file():
+def temp_db_file() -> Iterator[str]:
     """Create a temporary database file for integration testing."""
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as tmp_file:
         db_file = tmp_file.name
@@ -24,15 +25,14 @@ def temp_db_file():
 
 
 @pytest.fixture
-def db_connection(temp_db_file):
+def db_connection(temp_db_file: str) -> Iterator[sqlite3.Connection]:
     """Create a database connection for integration testing."""
-    conn = create_connection(temp_db_file)
-    yield conn
-    conn.close()
+    with create_connection(temp_db_file) as conn:
+        yield conn
 
 
 @pytest.fixture
-def player_stats_table_sql():
+def player_stats_table_sql() -> str:
     """SQL for creating a player stats table."""
     return """
         CREATE TABLE player_stats (
@@ -47,7 +47,7 @@ def player_stats_table_sql():
 
 
 @pytest.fixture
-def sample_player_stats():
+def sample_player_stats() -> pd.DataFrame:
     """Create sample player statistics DataFrame."""
     return pd.DataFrame(
         {
@@ -62,7 +62,7 @@ def sample_player_stats():
 
 
 @pytest.fixture
-def sample_league_standings():
+def sample_league_standings() -> pd.DataFrame:
     """Create sample league standings DataFrame."""
     return pd.DataFrame(
         {
@@ -75,7 +75,7 @@ def sample_league_standings():
 
 
 @pytest.fixture
-def updated_player_stats():
+def updated_player_stats() -> pd.DataFrame:
     """Create updated player statistics DataFrame."""
     return pd.DataFrame(
         {
@@ -95,8 +95,11 @@ def updated_player_stats():
 
 
 def test_full_database_workflow(
-    db_connection, player_stats_table_sql, sample_player_stats, updated_player_stats
-):
+    db_connection: sqlite3.Connection,
+    player_stats_table_sql: str,
+    sample_player_stats: pd.DataFrame,
+    updated_player_stats: pd.DataFrame,
+) -> None:
     """Test the complete workflow of database operations."""
     create_table(db_connection, player_stats_table_sql)
 
@@ -129,8 +132,10 @@ def test_full_database_workflow(
 
 
 def test_multiple_tables_workflow(
-    db_connection, sample_league_standings, sample_player_stats
-):
+    db_connection: sqlite3.Connection,
+    sample_league_standings: pd.DataFrame,
+    sample_player_stats: pd.DataFrame,
+) -> None:
     """Test working with multiple tables in the same database."""
     insert_dataframe(db_connection, "league_standings", sample_league_standings)
     insert_dataframe(db_connection, "player_stats", sample_player_stats)
@@ -144,7 +149,7 @@ def test_multiple_tables_workflow(
     assert "hits" in player_result.columns
 
 
-def test_database_path_creation():
+def test_database_path_creation() -> None:
     """Test that the database path function creates the data directory."""
     db_path = get_database_path()
 
@@ -157,7 +162,7 @@ def test_database_path_creation():
     assert data_dir.is_dir()
 
 
-def test_error_handling_workflow(db_connection):
+def test_error_handling_workflow(db_connection: sqlite3.Connection) -> None:
     """Test error handling in integrated database workflow."""
     with pytest.raises(Exception, match="Failed to read table"):
         read_table(db_connection, "nonexistent_table")
@@ -166,7 +171,7 @@ def test_error_handling_workflow(db_connection):
         create_table(db_connection, "INVALID SQL")
 
 
-def test_empty_dataframe_integration(db_connection):
+def test_empty_dataframe_integration(db_connection: sqlite3.Connection) -> None:
     """Test integration with empty DataFrames."""
     empty_df = pd.DataFrame({"id": [], "name": []})
 
@@ -177,7 +182,7 @@ def test_empty_dataframe_integration(db_connection):
     assert list(result_df.columns) == ["id", "name"]
 
 
-def test_large_dataset_integration(db_connection):
+def test_large_dataset_integration(db_connection: sqlite3.Connection) -> None:
     """Test integration with larger datasets."""
     large_df = pd.DataFrame(
         {
