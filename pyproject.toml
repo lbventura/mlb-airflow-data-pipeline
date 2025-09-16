@@ -10,7 +10,7 @@ dependencies = [
     "matplotlib==3.10.6",
     "numpy==2.3.2",
     "pandas==2.3.2",
-    "pydantic==2.11.7",
+    "pydantic==2.11.9",
     "pytest==8.4.2",
     "MLB-StatsAPI==1.9.0",
     "apache-airflow==3.0.6",
