@@ -9,7 +9,7 @@ requires-python = "==3.12.11"
 dependencies = [
     "matplotlib==3.10.5",
     "numpy==2.3.2",
-    "pandas==2.3.1",
+    "pandas==2.3.2",
     "pydantic==2.11.7",
     "pytest==8.4.1",
     "MLB-StatsAPI==1.9.0",
