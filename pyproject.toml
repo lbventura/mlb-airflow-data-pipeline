@@ -11,7 +11,7 @@ dependencies = [
     "numpy==2.3.2",
     "pandas==2.3.2",
     "pydantic==2.11.7",
-    "pytest==8.4.1",
+    "pytest==8.4.2",
     "MLB-StatsAPI==1.9.0",
     "apache-airflow==3.0.6",
     "structlog>=23.1.0",
