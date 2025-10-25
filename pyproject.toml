@@ -7,7 +7,7 @@ name = "mlb-airflow-data-pipeline"
 version = "0.0.1"
 requires-python = "==3.12.11"
 dependencies = [
-    "matplotlib==3.10.6",
+    "matplotlib==3.10.7",
     "numpy==2.3.3",
     "pandas==2.3.3",
     "pydantic==2.12.0",
