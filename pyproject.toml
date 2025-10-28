@@ -13,7 +13,7 @@ dependencies = [
     "pydantic==2.12.3",
     "pytest==8.4.2",
     "MLB-StatsAPI==1.9.0",
-    "apache-airflow==3.1.0",
+    "apache-airflow==3.1.1",
     "structlog>=23.1.0",
 ]
 
