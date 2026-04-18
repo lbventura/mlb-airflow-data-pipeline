@@ -154,7 +154,7 @@ def test_extraction_data_types_compatibility(db_connection: sqlite3.Connection) 
 
     assert len(result) == 2
     assert result["team_id"].dtype in ["int64", "int32"]
-    assert result["name"].dtype == "object"
+    assert result.name.dtype.name == "str"
     assert result["avg"].dtype in ["float64", "float32"]
 
 
