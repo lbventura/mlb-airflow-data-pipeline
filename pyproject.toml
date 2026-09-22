@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mlb-airflow-data-pipeline"
 version = "0.0.1"
-requires-python = "==3.12.11"
+requires-python = "==3.14.7"
 dependencies = [
     "matplotlib==3.11.2",
     "numpy==2.5.3",
