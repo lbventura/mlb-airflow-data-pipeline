@@ -1,19 +1,48 @@
-A data pipeline which allows for automatic, fast and reliable extraction, manipulation and representation of data from the Major League Baseball (MLB) Statistics API (statsapi). This involves:
+# MLB Airflow Data Pipeline
 
-1. Extracting raw data from statsapi and pre-process it;
-2. Augmenting the current set of statistics;
-3. Summarizing results in an automatically-generated HTML report with a relevant description, tables and charts.
+This project extracts MLB statistics from the public MLB Stats API, stores them in SQLite, derives player statistics, and produces charts and HTML reports. Apache Airflow schedules daily extraction and weekly reporting workflows for the American and National Leagues.
 
-To achieve this, the following tools are be used, with Python as the programming language:
+## Technologies
 
-1. The package [`statsapi`](https://github.com/toddrob99/MLB-StatsAPI), which writes HTTP requests to the MLB API. This simplifies data collection and allows us to focus on extracting the data from these requests and treating it;
-2. Pandas for creating data tables and generating new features;
-3. Matplotlib for representing the results;
+- Python (version pinned in `pyproject.toml`)
+- Apache Airflow for scheduling and orchestration
+- MLB-StatsAPI for access to MLB data
+- pandas and NumPy for tabular data and feature calculations
+- SQLite for local persistence
+- Matplotlib for charts
 
-Together with Airflow for orchestration.
+## Set up a development environment
 
-The working repository is composed of the following folders:
+Use Linux or macOS, install [Micromamba](https://mamba.readthedocs.io/en/latest/installation/micromamba-installation.html), and create the environment with the Python version specified by `requires-python` in `pyproject.toml`:
 
-1. `bash`, containing the bash commands called by the Airflow BashOperators in orchestration;
-2. `dags`, containing the Airflow DAGs which schedule the daily runs of the American and National League data pipelines and the weekly runs of the reporting pipelines. This folder should be placed in the `Airflow` folder after Airflow is installed;
-3. `mlb_airflow_data_pipeline`, containing the scripts which perform the extraction, manipulation and representation of data. See README.md there for details;
+```sh
+micromamba create -n mlb-airflow-env python=3.14.7
+micromamba install -n mlb-airflow-env -c conda-forge apache-airflow google-re2
+micromamba run -n mlb-airflow-env python -m pip install -e .
+```
+
+The Python version above matches the project metadata. Install `pre-commit` and enable the repository hooks:
+
+```sh
+micromamba run -n mlb-airflow-env python -m pip install pre-commit
+micromamba run -n mlb-airflow-env pre-commit install
+```
+
+## Run checks
+
+```sh
+micromamba run -n mlb-airflow-env pytest tests
+micromamba run -n mlb-airflow-env pre-commit run --all-files
+```
+
+Pytest excludes tests marked `manual` by default; see `pytest.ini`.
+
+## Project structure
+
+- `dags/`: Airflow DAGs for daily extraction and weekly reporting.
+- `bash/`: shell commands called by the DAGs.
+- `mlb_airflow_data_pipeline/`: Python code for API extraction, SQLite persistence, data treatment, feature creation, analysis, and reporting.
+- `tests/unit/` and `tests/integration/`: unit and integration tests.
+- `.github/workflows/`: GitHub Actions test workflow.
+- `.pre-commit-config.yaml`: whitespace, YAML, mypy, and Ruff hooks.
+
