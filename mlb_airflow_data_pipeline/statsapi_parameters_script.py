@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+from pathlib import Path
 
 DATE_TIME_EXECUTION = datetime.today().strftime("%Y-%m-%d")
 
@@ -7,11 +8,11 @@ LEAGUE_MAPPING = {"american_league": 103, "national_league": 104}
 
 LEAGUE_DIVISION_MAPPING = {103: [200, 201, 202], 104: [203, 204, 205]}
 
-SOURCE_LOCATION = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
 # setting "national_league" as the default league name
 LEAGUE_NAME = "national_league"
-LEAGUE_NAME_LOCATION = f"{SOURCE_LOCATION}/league_name_choice.txt"
+LEAGUE_NAME_LOCATION = str(PROJECT_ROOT / "league_name_choice.txt")
 
 # if there is not an ongoing season, this parameter has to be set to the
 # previous year.
@@ -27,13 +28,18 @@ except FileNotFoundError:
     # Keep the default value if file doesn't exist (useful for testing)
     pass
 
-DATA_FILE_LOCATION = (
-    "/root/mlb-airflow-data-pipeline/mlb_airflow_data_pipeline/db_data/"
-)
+DATA_FILE_LOCATION = str(
+    Path(
+        os.environ.get(
+            "MLB_AIRFLOW_DATA_DIR",
+            str(PROJECT_ROOT / "mlb_airflow_data_pipeline" / "db_data"),
+        )
+    )
+) + os.sep
 
-OUTPUT_FILE_LOCATION = (
-    "/root/mlb-airflow-data-pipeline/mlb_airflow_data_pipeline/output/"
-)
+OUTPUT_FILE_LOCATION = str(
+    PROJECT_ROOT / "mlb_airflow_data_pipeline" / "output"
+) + os.sep
 
 # player information fields
 PLAYER_INFORMATION = ["playername", "team_id"]
@@ -132,9 +138,11 @@ def expected_output_columns() -> list[str]:
     return sorted(
         [
             "playername",
+            "age",
             "gamesPlayed",
             "gamesStarted",
             "caughtStealing",
+            "caughtStealingPercentage",
             "stolenBases",
             "stolenBasePercentage",
             "assists",
