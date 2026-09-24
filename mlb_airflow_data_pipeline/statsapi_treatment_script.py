@@ -1,14 +1,17 @@
 import argparse
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel
 
-from mlb_airflow_data_pipeline.statsapi_extraction_script import (
-    DATE_TIME_EXECUTION,
-    PLAYER_DATA_FILE_NAME,
+from mlb_airflow_data_pipeline.db_utils import (
+    create_connection,
+    get_database_path,
+    read_player_stats,
 )
+from mlb_airflow_data_pipeline.statsapi_extraction_script import DATE_TIME_EXECUTION
 from mlb_airflow_data_pipeline.statsapi_feature_utils import (
     create_babip,
     create_dif_strike_outs_base_on_balls,
@@ -43,16 +46,32 @@ class DataPaths(BaseModel):
     path_to_output_data: Optional[str] = None
 
 
+class TreatmentDataPaths(BaseModel):
+    database_path: str
+    league_name: str
+    execution_date: str
+    path_to_output_data: str
+
+
 class DataTreaterInputRepresentation(BaseModel):
     subset_columns: list
     filter_conditions_dict: dict
     transformation_dict: dict
 
 
+def _convert_numeric_columns(dataframe: pd.DataFrame) -> pd.DataFrame:
+    """Convert columns whose non-null values are all numeric."""
+    for column in dataframe.columns:
+        converted_column = pd.to_numeric(dataframe[column], errors="coerce")
+        if converted_column.notna().sum() == dataframe[column].notna().sum():
+            dataframe[column] = converted_column
+    return dataframe
+
+
 class DataTreater:
     def __init__(
         self,
-        data_paths: DataPaths,
+        data_paths: TreatmentDataPaths,
         input_parameters: DataTreaterInputRepresentation,
     ):
         self.data_paths = data_paths
@@ -108,10 +127,18 @@ class DataTreater:
         return intermediate_data
 
     def get_input_data(self) -> pd.DataFrame:
-        input_data = pd.read_csv(self.data_paths.path_to_input_data, index_col=0)
+        with create_connection(self.data_paths.database_path) as conn:
+            input_data = read_player_stats(
+                conn,
+                self.data_paths.league_name,
+                self.data_paths.execution_date,
+            )
+        input_data = _convert_numeric_columns(input_data)
         logger.info(
             "data_input_loaded",
-            file_path=self.data_paths.path_to_input_data,
+            database_path=self.data_paths.database_path,
+            league_name=self.data_paths.league_name,
+            execution_date=self.data_paths.execution_date,
             data_shape=input_data.shape,
         )
         return input_data
@@ -249,6 +276,37 @@ defender_input_data_repr = DataTreaterInputRepresentation(
     transformation_dict=defender_transformation_dict,
 )
 
+
+def treat_player_stats(
+    database_path: str,
+    league_name: str,
+    execution_date: str,
+    output_directory: str,
+) -> None:
+    """Create treated player-statistics files for one league run."""
+    output_details = f"{league_name}_{execution_date}"
+    player_configs = [
+        ("batter", batter_input_data_repr, f"{output_details}_batter_stats_df.csv"),
+        ("pitcher", pitcher_input_data_repr, f"{output_details}_pitcher_stats_df.csv"),
+        (
+            "defender",
+            defender_input_data_repr,
+            f"{output_details}_defender_stats_df.csv",
+        ),
+    ]
+
+    for player_type, input_parameters, output_filename in player_configs:
+        logger.info("processing_player_type", player_type=player_type)
+        data_paths = TreatmentDataPaths(
+            database_path=database_path,
+            league_name=league_name,
+            execution_date=execution_date,
+            path_to_output_data=str(Path(output_directory) / output_filename),
+        )
+        DataTreater(data_paths, input_parameters).set_output_data_file()
+        logger.info("player_type_completed", player_type=player_type)
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Optional input arguments for treatment script",
@@ -270,16 +328,6 @@ if __name__ == "__main__":
     if input_league_name:
         LEAGUE_NAME = config["league_name"]
 
-    PLAYER_DATA_FILE_NAME = (
-        f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}_full_player_stats_df.csv"
-    )
-
-    OUTPUT_DETAILS = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}"
-
-    BATTER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_batter_stats_df.csv"
-    PITCHER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_pitcher_stats_df.csv"
-    DEFENDER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_defender_stats_df.csv"
-
     logger.info(
         "treatment_started",
         league=LEAGUE_NAME,
@@ -287,37 +335,11 @@ if __name__ == "__main__":
         player_types=["batter", "pitcher", "defender"],
     )
 
-    # Process each player type
-    player_configs = [
-        ("batter", batter_input_data_repr, BATTER_DATA_FILE_NAME),
-        ("pitcher", pitcher_input_data_repr, PITCHER_DATA_FILE_NAME),
-        ("defender", defender_input_data_repr, DEFENDER_DATA_FILE_NAME),
-    ]
+    treat_player_stats(
+        get_database_path(),
+        LEAGUE_NAME,
+        DATE_TIME_EXECUTION,
+        DATA_FILE_LOCATION,
+    )
 
-    for player_type, input_params, output_filename in player_configs:
-        logger.info("processing_player_type", player_type=player_type)
-
-        try:
-            input_paths = DataPaths(
-                path_to_input_data=DATA_FILE_LOCATION + PLAYER_DATA_FILE_NAME,
-                path_to_output_data=DATA_FILE_LOCATION + output_filename,
-            )
-
-            data_treater = DataTreater(
-                data_paths=input_paths, input_parameters=input_params
-            )
-
-            data_treater.set_output_data_file()
-
-            logger.info("player_type_completed", player_type=player_type)
-
-        except Exception as e:
-            logger.error(
-                "player_type_failed",
-                player_type=player_type,
-                error=str(e),
-                exc_info=True,
-            )
-            raise
-
-    logger.info("treatment_completed", player_types_processed=len(player_configs))
+    logger.info("treatment_completed", player_types_processed=3)

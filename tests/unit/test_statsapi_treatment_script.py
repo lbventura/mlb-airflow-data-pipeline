@@ -1,17 +1,20 @@
 import os
+from pathlib import Path
 
 import pandas as pd
 import pandas.api.types as pdtypes
 import pytest
 
+from mlb_airflow_data_pipeline.db_utils import create_connection, insert_dataframe
 from mlb_airflow_data_pipeline.statsapi_feature_utils import (
     create_mean_normalization,
     create_plate_appearance_normalization,
 )
 from mlb_airflow_data_pipeline.statsapi_treatment_script import (
-    DataPaths,
+    _convert_numeric_columns,
     DataTreater,
     DataTreaterInputRepresentation,
+    TreatmentDataPaths,
     batter_transformation_dict,
     batting_stats_list,
 )
@@ -24,10 +27,6 @@ EXAMPLE_DATA_PATH: str = os.path.join(
 
 
 batter_filter_conditions_dict: dict[str, int] = {"plateAppearances": 100, "atBats": 50}
-
-batter_input_paths: DataPaths = DataPaths(
-    path_to_input_data=EXAMPLE_DATA_PATH,
-)
 
 batter_input_data_repr: DataTreaterInputRepresentation = DataTreaterInputRepresentation(
     subset_columns=batting_stats_list,
@@ -118,7 +117,9 @@ def object_features_list() -> list[str]:
     return [
         "atBatsPerHomeRun",
         "babip",
+        "date",
         "groundOutsToAirouts",
+        "league_name",
         "playername",
         "rangeFactorPer9Inn",
         "stolenBasePercentage",
@@ -127,13 +128,34 @@ def object_features_list() -> list[str]:
     ]
 
 
+@pytest.fixture
+def batter_input_paths(tmp_path: Path) -> TreatmentDataPaths:
+    execution_date = "2026-01-01"
+    player_stats = pd.read_csv(EXAMPLE_DATA_PATH, index_col=0).assign(
+        date=execution_date,
+        league_name="national_league",
+    )
+    database_path = tmp_path / "mlb_data.db"
+    with create_connection(str(database_path)) as conn:
+        insert_dataframe(conn, "player_stats", player_stats)
+
+    return TreatmentDataPaths(
+        database_path=str(database_path),
+        league_name="national_league",
+        execution_date=execution_date,
+        path_to_output_data=str(tmp_path / "batter_stats.csv"),
+    )
+
+
 @pytest.mark.parametrize(
     "is_numeric, feature_list",
     [(True, numeric_features_list()), (False, object_features_list())],
 )
-def test_data_treater_input_data(is_numeric: bool, feature_list: list[str]) -> None:
-    # temporary test until type conversion is implemented
-    # checks that pd.read_csv type conversion is working as expected
+def test_data_treater_input_data(
+    batter_input_paths: TreatmentDataPaths,
+    is_numeric: bool,
+    feature_list: list[str],
+) -> None:
     batter_data_treater: DataTreater = DataTreater(
         data_paths=batter_input_paths, input_parameters=batter_input_data_repr
     )
@@ -155,7 +177,7 @@ def test_data_treater_input_data(is_numeric: bool, feature_list: list[str]) -> N
     assert extracted_numeric_features == expected_numeric_features
 
 
-def test_data_treater_filter_data() -> None:
+def test_data_treater_filter_data(batter_input_paths: TreatmentDataPaths) -> None:
     batter_data_treater: DataTreater = DataTreater(
         data_paths=batter_input_paths, input_parameters=batter_input_data_repr
     )
@@ -171,7 +193,9 @@ def test_data_treater_filter_data() -> None:
     assert not sum(output_df["atBats"] < batter_filter_conditions_dict.get("atBats"))
 
 
-def test_data_treater_get_output_data() -> None:
+def test_data_treater_get_output_data(
+    batter_input_paths: TreatmentDataPaths,
+) -> None:
     batter_data_treater: DataTreater = DataTreater(
         data_paths=batter_input_paths, input_parameters=batter_input_data_repr
     )
@@ -204,3 +228,21 @@ def test_data_treater_get_output_data() -> None:
     }
 
     assert expected_normalized_features.difference(actual_features) == set()
+
+
+def test_convert_numeric_columns() -> None:
+    input_data = pd.DataFrame(
+        {
+            "hits": ["12", "8"],
+            "batting_average": [".300", ".250"],
+            "range_factor": ["-.--", "2.50"],
+            "playername": ["Player One", "Player Two"],
+        }
+    )
+
+    output_data = _convert_numeric_columns(input_data)
+
+    assert pdtypes.is_numeric_dtype(output_data["hits"])
+    assert pdtypes.is_numeric_dtype(output_data["batting_average"])
+    assert not pdtypes.is_numeric_dtype(output_data["range_factor"])
+    assert not pdtypes.is_numeric_dtype(output_data["playername"])

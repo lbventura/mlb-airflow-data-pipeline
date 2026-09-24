@@ -9,7 +9,9 @@ import pytest
 from mlb_airflow_data_pipeline.db_utils import (
     create_connection,
     create_table,
+    ensure_player_stats_league_name_column,
     insert_dataframe,
+    read_player_stats,
     read_table,
 )
 
@@ -165,3 +167,41 @@ def test_read_table_empty_table(
 
     assert len(result_df) == 0
     assert list(result_df.columns) == ["id", "name"]
+
+
+def test_ensure_player_stats_league_name_column(
+    db_connection: sqlite3.Connection,
+) -> None:
+    insert_dataframe(
+        db_connection,
+        "player_stats",
+        pd.DataFrame({"playername": ["Player"], "date": ["2026-01-01"]}),
+    )
+
+    ensure_player_stats_league_name_column(db_connection)
+
+    columns = {
+        row[1] for row in db_connection.execute("PRAGMA table_info(player_stats)")
+    }
+    assert "league_name" in columns
+
+
+def test_read_player_stats_scopes_to_one_league_run(
+    db_connection: sqlite3.Connection,
+) -> None:
+    player_stats = pd.DataFrame(
+        {
+            "playername": ["AL player", "NL player", "Earlier AL player"],
+            "league_name": [
+                "american_league",
+                "national_league",
+                "american_league",
+            ],
+            "date": ["2026-01-01", "2026-01-01", "2025-12-31"],
+        }
+    )
+    insert_dataframe(db_connection, "player_stats", player_stats)
+
+    result = read_player_stats(db_connection, "american_league", "2026-01-01")
+
+    assert result["playername"].tolist() == ["AL player"]

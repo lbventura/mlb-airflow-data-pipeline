@@ -14,6 +14,7 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
 from mlb_airflow_data_pipeline.logging_setup import get_logger
 from mlb_airflow_data_pipeline.db_utils import (
     create_connection,
+    ensure_player_stats_league_name_column,
     get_database_path,
     insert_dataframe,
 )
@@ -289,7 +290,11 @@ if __name__ == "__main__":
             failed_teams,
         ) = data_extractor.get_player_stats_per_league()
 
-        insert_dataframe(conn, "player_stats", league_player_team_stats_df)
+        ensure_player_stats_league_name_column(conn)
+        player_stats_for_run = league_player_team_stats_df.assign(
+            league_name=LEAGUE_NAME
+        )
+        insert_dataframe(conn, "player_stats", player_stats_for_run)
 
         logger.info(
             "extraction_completed",

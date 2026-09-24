@@ -98,6 +98,34 @@ def read_table(conn: sqlite3.Connection, table_name: str) -> pd.DataFrame:
         raise Exception(f"Failed to read table {table_name}: {e}")
 
 
+def ensure_player_stats_league_name_column(conn: sqlite3.Connection) -> None:
+    """Add the league name column needed to identify a player-stats run."""
+    columns = {
+        row[1] for row in conn.execute("PRAGMA table_info(player_stats)")
+    }
+    if columns and "league_name" not in columns:
+        conn.execute("ALTER TABLE player_stats ADD COLUMN league_name TEXT")
+        conn.commit()
+
+
+def read_player_stats(
+    conn: sqlite3.Connection, league_name: str, execution_date: str
+) -> pd.DataFrame:
+    """Read player statistics produced for one league on one date."""
+    try:
+        return pd.read_sql_query(
+            """
+            SELECT *
+            FROM player_stats
+            WHERE league_name = ? AND date = ?
+            """,
+            conn,
+            params=(league_name, execution_date),
+        )
+    except sqlite3.Error as e:
+        raise sqlite3.Error(f"Failed to read scoped player statistics: {e}")
+
+
 def get_database_path() -> str:
     """Returns the path to the SQLite database file.
 
