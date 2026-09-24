@@ -36,6 +36,18 @@ def airflow(*args: str, timeout: int = CLI_TIMEOUT_SECONDS) -> str:
     return result.stdout
 
 
+def task_states(run_id: str) -> str:
+    """Return task-state rows without the CLI warning logs."""
+    output = airflow(
+        "tasks", "states-for-dag-run", DAG_ID, run_id, "--output", "plain"
+    )
+    return "\n".join(
+        line
+        for line in output.splitlines()
+        if line.startswith("dag_id") or line.startswith(DAG_ID)
+    )
+
+
 @pytest.fixture(scope="session", autouse=True)
 def setup_airflow(tmp_path_factory: pytest.TempPathFactory) -> None:
     """Initialize Airflow with temporary local data when it is available."""
@@ -129,11 +141,13 @@ def test_full_dag_execution(airflow_runtime: None) -> None:
 
     deadline = time.monotonic() + DAG_RUN_TIMEOUT_SECONDS
     while time.monotonic() < deadline:
-        state = airflow("dags", "state", DAG_ID, run_id).strip().lower()
+        state = (
+            airflow("dags", "state", DAG_ID, run_id).strip().splitlines()[-1].lower()
+        )
         if "success" in state:
             return
         if "failed" in state:
-            pytest.fail(f"DAG execution failed: {state}")
+            pytest.fail(f"DAG execution failed: {state}\n{task_states(run_id)}")
         time.sleep(DAG_STATE_POLL_INTERVAL_SECONDS)
 
     pytest.fail(f"DAG did not complete within {DAG_RUN_TIMEOUT_SECONDS} seconds")
