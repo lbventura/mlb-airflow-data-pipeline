@@ -98,14 +98,31 @@ def read_table(conn: sqlite3.Connection, table_name: str) -> pd.DataFrame:
         raise Exception(f"Failed to read table {table_name}: {e}")
 
 
-def ensure_player_stats_league_name_column(conn: sqlite3.Connection) -> None:
-    """Add the league name column needed to identify a player-stats run."""
-    columns = {
-        row[1] for row in conn.execute("PRAGMA table_info(player_stats)")
+def ensure_dataframe_columns(
+    conn: sqlite3.Connection, table_name: str, dataframe: pd.DataFrame
+) -> None:
+    """Add new DataFrame columns to an existing SQLite table before appending."""
+    quoted_table = '"' + table_name.replace('"', '""') + '"'
+    existing_columns = {
+        row[1] for row in conn.execute(f"PRAGMA table_info({quoted_table})")
     }
-    if columns and "league_name" not in columns:
-        conn.execute("ALTER TABLE player_stats ADD COLUMN league_name TEXT")
-        conn.commit()
+    if not existing_columns:
+        return
+
+    for column in dataframe.columns:
+        if column in existing_columns:
+            continue
+        dtype = dataframe[column].dtype
+        column_type = (
+            "INTEGER"
+            if pd.api.types.is_integer_dtype(dtype) or pd.api.types.is_bool_dtype(dtype)
+            else "REAL" if pd.api.types.is_float_dtype(dtype) else "TEXT"
+        )
+        quoted_column = '"' + column.replace('"', '""') + '"'
+        conn.execute(
+            f"ALTER TABLE {quoted_table} ADD COLUMN {quoted_column} {column_type}"
+        )
+    conn.commit()
 
 
 def read_player_stats(
