@@ -28,18 +28,17 @@ except FileNotFoundError:
     # Keep the default value if file doesn't exist (useful for testing)
     pass
 
-DATA_FILE_LOCATION = str(
-    Path(
-        os.environ.get(
-            "MLB_AIRFLOW_DATA_DIR",
-            str(PROJECT_ROOT / "mlb_airflow_data_pipeline" / "db_data"),
-        )
-    )
-) + os.sep
+DATA_FILE_LOCATION = os.path.join(
+    os.environ.get(
+        "MLB_AIRFLOW_DATA_DIR",
+        str(PROJECT_ROOT / "mlb_airflow_data_pipeline" / "db_data"),
+    ),
+    "",
+)
 
-OUTPUT_FILE_LOCATION = str(
-    PROJECT_ROOT / "mlb_airflow_data_pipeline" / "output"
-) + os.sep
+OUTPUT_FILE_LOCATION = os.path.join(
+    PROJECT_ROOT, "mlb_airflow_data_pipeline", "output", ""
+)
 
 # player information fields
 PLAYER_INFORMATION = ["playername", "team_id"]

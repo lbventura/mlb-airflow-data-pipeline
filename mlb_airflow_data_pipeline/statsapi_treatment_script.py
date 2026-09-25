@@ -47,6 +47,8 @@ class DataPaths(BaseModel):
 
 
 class TreatmentDataPaths(BaseModel):
+    """SQLite source, league/date selection, and CSV destination for treatment."""
+
     database_path: str
     league_name: str
     execution_date: str

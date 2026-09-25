@@ -147,19 +147,22 @@ def batter_input_paths(tmp_path: Path) -> TreatmentDataPaths:
     )
 
 
+@pytest.fixture
+def batter_data_treater(batter_input_paths: TreatmentDataPaths) -> DataTreater:
+    return DataTreater(
+        data_paths=batter_input_paths, input_parameters=batter_input_data_repr
+    )
+
+
 @pytest.mark.parametrize(
     "is_numeric, feature_list",
     [(True, numeric_features_list()), (False, object_features_list())],
 )
 def test_data_treater_input_data(
-    batter_input_paths: TreatmentDataPaths,
+    batter_data_treater: DataTreater,
     is_numeric: bool,
     feature_list: list[str],
 ) -> None:
-    batter_data_treater: DataTreater = DataTreater(
-        data_paths=batter_input_paths, input_parameters=batter_input_data_repr
-    )
-
     output_df: pd.DataFrame = batter_data_treater.get_input_data()
 
     output_df_is_numeric_columns: dict[str, bool] = {
@@ -177,10 +180,7 @@ def test_data_treater_input_data(
     assert extracted_numeric_features == expected_numeric_features
 
 
-def test_data_treater_filter_data(batter_input_paths: TreatmentDataPaths) -> None:
-    batter_data_treater: DataTreater = DataTreater(
-        data_paths=batter_input_paths, input_parameters=batter_input_data_repr
-    )
+def test_data_treater_filter_data(batter_data_treater: DataTreater) -> None:
     output_df: pd.DataFrame = batter_data_treater.get_filter_data()
 
     expected_output_shape: tuple[int, int] = (129, 30)
@@ -194,11 +194,8 @@ def test_data_treater_filter_data(batter_input_paths: TreatmentDataPaths) -> Non
 
 
 def test_data_treater_get_output_data(
-    batter_input_paths: TreatmentDataPaths,
+    batter_data_treater: DataTreater,
 ) -> None:
-    batter_data_treater: DataTreater = DataTreater(
-        data_paths=batter_input_paths, input_parameters=batter_input_data_repr
-    )
     output_data: pd.DataFrame = batter_data_treater.get_output_data()
 
     actual_features: set[str] = set(output_data.columns)
