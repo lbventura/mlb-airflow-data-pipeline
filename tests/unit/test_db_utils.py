@@ -9,7 +9,9 @@ import pytest
 from mlb_airflow_data_pipeline.db_utils import (
     create_connection,
     create_table,
+    ensure_dataframe_columns,
     insert_dataframe,
+    read_player_stats,
     read_table,
 )
 
@@ -165,3 +167,71 @@ def test_read_table_empty_table(
 
     assert len(result_df) == 0
     assert list(result_df.columns) == ["id", "name"]
+
+
+def test_ensure_dataframe_columns_preserves_existing_rows(
+    db_connection: sqlite3.Connection,
+) -> None:
+    insert_dataframe(
+        db_connection,
+        "league_standings",
+        pd.DataFrame({"name": ["Existing team"]}),
+    )
+    current_standings = pd.DataFrame(
+        {"name": ["New team"], "date": ["2026-09-25"]}
+    )
+
+    ensure_dataframe_columns(db_connection, "league_standings", current_standings)
+    insert_dataframe(db_connection, "league_standings", current_standings)
+
+    result = read_table(db_connection, "league_standings")
+    assert result["name"].tolist() == ["Existing team", "New team"]
+    assert pd.isna(result.loc[0, "date"])
+    assert result.loc[1, "date"] == "2026-09-25"
+
+
+def test_ensure_dataframe_columns_adds_player_stats_fields(
+    db_connection: sqlite3.Connection,
+) -> None:
+    insert_dataframe(
+        db_connection,
+        "player_stats",
+        pd.DataFrame({"playername": ["Existing player"]}),
+    )
+    current_players = pd.DataFrame(
+        {
+            "playername": ["New player"],
+            "age": ["27"],
+            "caughtStealingPercentage": [".500"],
+            "date": ["2026-09-25"],
+            "league_name": ["american_league"],
+        }
+    )
+
+    ensure_dataframe_columns(db_connection, "player_stats", current_players)
+    insert_dataframe(db_connection, "player_stats", current_players)
+
+    result = read_table(db_connection, "player_stats")
+    assert result["playername"].tolist() == ["Existing player", "New player"]
+    assert result.loc[1, "league_name"] == "american_league"
+
+
+def test_read_player_stats_scopes_to_one_league_run(
+    db_connection: sqlite3.Connection,
+) -> None:
+    player_stats = pd.DataFrame(
+        {
+            "playername": ["AL player", "NL player", "Earlier AL player"],
+            "league_name": [
+                "american_league",
+                "national_league",
+                "american_league",
+            ],
+            "date": ["2026-01-01", "2026-01-01", "2025-12-31"],
+        }
+    )
+    insert_dataframe(db_connection, "player_stats", player_stats)
+
+    result = read_player_stats(db_connection, "american_league", "2026-01-01")
+
+    assert result["playername"].tolist() == ["AL player"]

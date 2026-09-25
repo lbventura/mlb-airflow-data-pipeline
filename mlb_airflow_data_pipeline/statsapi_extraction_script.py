@@ -14,6 +14,7 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
 from mlb_airflow_data_pipeline.logging_setup import get_logger
 from mlb_airflow_data_pipeline.db_utils import (
     create_connection,
+    ensure_dataframe_columns,
     get_database_path,
     insert_dataframe,
 )
@@ -273,6 +274,9 @@ if __name__ == "__main__":
             standings_shape=data_extractor.league_standings.shape,
         )
 
+        ensure_dataframe_columns(
+            conn, "league_standings", data_extractor.league_standings
+        )
         insert_dataframe(conn, "league_standings", data_extractor.league_standings)
         logger.info(
             "league_standings_saved", database_path=db_path, table="league_standings"
@@ -289,7 +293,11 @@ if __name__ == "__main__":
             failed_teams,
         ) = data_extractor.get_player_stats_per_league()
 
-        insert_dataframe(conn, "player_stats", league_player_team_stats_df)
+        player_stats_for_run = league_player_team_stats_df.assign(
+            league_name=LEAGUE_NAME
+        )
+        ensure_dataframe_columns(conn, "player_stats", player_stats_for_run)
+        insert_dataframe(conn, "player_stats", player_stats_for_run)
 
         logger.info(
             "extraction_completed",
