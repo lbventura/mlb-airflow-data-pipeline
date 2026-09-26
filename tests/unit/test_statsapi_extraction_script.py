@@ -3,7 +3,6 @@ from typing import Any
 import pandas as pd
 
 from mlb_airflow_data_pipeline.statsapi_extraction_script import (
-    _extract_player_name,
     _generate_player_stats,
     _insert_col_in_first_position,
 )
@@ -19,12 +18,6 @@ def test__insert_col_in_first_position() -> None:
     _insert_col_in_first_position(test_df, column_name=first_column)
     assert test_df.columns[0] == first_column
     assert test_df[first_column].to_list() == col_2_data
-
-
-def test__extract_player_name() -> None:
-    input_string: str = "#99  CF  Aaron Judge"
-    expected_result: str = "Aaron Judge"
-    assert _extract_player_name(input_string) == expected_result
 
 
 def test__generate_player_stats(

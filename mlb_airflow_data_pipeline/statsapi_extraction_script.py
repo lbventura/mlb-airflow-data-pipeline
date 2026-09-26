@@ -39,9 +39,31 @@ def _insert_col_in_first_position(
     return dataframe
 
 
-def _extract_player_name(player: str) -> str:
-    player_data: list = player.split(" ")
-    return " ".join(player_data[-2:])
+def _get_team_roster_players(team_id: int) -> dict[int, str]:
+    response = statsapi.get(
+        "team_roster",
+        {"teamId": team_id, "season": SEASON_YEAR, "rosterType": "active"},
+    )
+    try:
+        roster = response["roster"]
+    except (KeyError, TypeError) as error:
+        error.add_note(f"Malformed roster for team {team_id}")
+        raise
+    players: dict[int, str] = {}
+    for entry in roster:
+        try:
+            player = entry["person"]
+            player_id = player["id"]
+            full_name = player["fullName"]
+        except (KeyError, TypeError) as error:
+            error.add_note(f"Malformed roster entry for team {team_id}")
+            raise
+        if player_id in players:
+            raise ValueError(
+                f"Duplicate player ID {player_id} in team {team_id} roster"
+            )
+        players[player_id] = full_name
+    return players
 
 
 def _generate_player_stats(player_stats_str: list[str]) -> dict:
@@ -62,43 +84,34 @@ def _get_stats_type(is_season_stats: bool = IS_SEASON_STATS) -> str:
 
 
 class TeamStats:
-    def __init__(self, player_names_per_team: list[str]):
-        self.player_names_per_team = player_names_per_team
-        self.team_stats: dict = {}
+    def __init__(self, roster_players: dict[int, str]):
+        self.roster_players = roster_players
+        self.team_stats: dict[int, list[str]] = {}
 
-    def get_team_stats(self) -> tuple[pd.DataFrame, dict, dict]:
-        active_player_name_ids = {}
-        inactive_player_info = {}
+    def get_team_stats(
+        self,
+    ) -> tuple[pd.DataFrame, dict[int, str], dict[int, str]]:
+        active_players: dict[int, str] = {}
+        inactive_players: dict[int, str] = {}
 
-        self._set_player_name_ids()
-
-        for name, player_id in self.player_name_ids.items():
+        for player_id, name in self.roster_players.items():
             try:
-                self.team_stats[name] = statsapi.player_stats(
+                self.team_stats[player_id] = statsapi.player_stats(
                     player_id, type=_get_stats_type()
                 ).split("\n")
-                active_player_name_ids[name] = player_id
+                active_players[player_id] = name
             except TypeError:
-                inactive_player_info[name] = player_id
+                inactive_players[player_id] = name
 
         team_player_stats = self._get_team_player_stats()
 
-        return team_player_stats, active_player_name_ids, inactive_player_info
-
-    def _set_player_name_ids(self) -> None:
-        player_name_ids = {
-            player_name: statsapi.lookup_player(player_name, season=SEASON_YEAR)[0][
-                "id"
-            ]
-            for player_name in self.player_names_per_team
-        }
-        self.player_name_ids = player_name_ids
+        return team_player_stats, active_players, inactive_players
 
     def _get_team_player_stats(self) -> pd.DataFrame:
         team_player_stats = pd.DataFrame(
             data={
-                self.player_name_ids[player]: _generate_player_stats(player_stats_str)
-                for player, player_stats_str in self.team_stats.items()
+                player_id: _generate_player_stats(player_stats_str)
+                for player_id, player_stats_str in self.team_stats.items()
             }
         ).T
         return team_player_stats
@@ -109,24 +122,24 @@ class DataExtractor:
         self.league_name = league_name
         self.team_id_name_mapping: dict[int, str] = {}
         self.league_standings: pd.DataFrame = pd.DataFrame()
-        self.league_team_rosters_player_names: dict[int, list[str]] = {}
+        self.league_team_roster_players: dict[int, dict[int, str]] = {}
 
     def get_player_stats_per_league(
         self,
-    ) -> tuple[pd.DataFrame, dict, list]:
+    ) -> tuple[pd.DataFrame, dict[int, dict[int, str]], list[str]]:
         """
         Returns player individual stats per league.
 
         Returns:
             pd.DataFrame: Containing stats for a given league
-            dict: Keys are team names and values are inactive players
+            dict: Keys are team IDs and values are inactive players by ID
             list: List of teams for which we failed to get stats
         """
         league_player_team_stats = {}
         inactive_players_per_team = {}
         failed_teams = []
 
-        for team_number in self.league_team_rosters_player_names.keys():
+        for team_number in self.league_team_roster_players:
             try:
                 (
                     team_player_stats,
@@ -162,7 +175,7 @@ class DataExtractor:
     def get_player_stats_dataframe_per_team(
         self,
         team_number: int,
-    ) -> tuple[pd.DataFrame, dict]:
+    ) -> tuple[pd.DataFrame, dict[int, str]]:
         """Takes as input a team number and returns a pandas DataFrame
         containing the stats of the active players,
         and a dictionary with inactive player information.
@@ -179,31 +192,19 @@ class DataExtractor:
             dict: Dictionary with inactive player information
         """
 
-        player_names_per_team = self.league_team_rosters_player_names[team_number]
-
-        player_information_per_team = TeamStats(
-            player_names_per_team=player_names_per_team
-        )
+        roster_players = self.league_team_roster_players[team_number]
+        player_information_per_team = TeamStats(roster_players)
 
         (
             team_player_stats,
-            active_player_name_ids,
+            active_players,
             inactive_player_info,
         ) = player_information_per_team.get_team_stats()
-
-        corrected_player_name_ids: dict[str, int] = {
-            name: id for name, id in active_player_name_ids.items() if len(name) >= 2
-        }
-
-        corrected_player_names = [ele for ele in corrected_player_name_ids.keys()]
-        corrected_player_ids = [ele for ele in corrected_player_name_ids.values()]
-
-        corrected_team_player_stats = team_player_stats.loc[corrected_player_ids]
-        corrected_team_player_stats["playername"] = corrected_player_names
-        corrected_team_player_stats["team_id"] = team_number
+        team_player_stats["playername"] = list(active_players.values())
+        team_player_stats["team_id"] = team_number
 
         return (
-            _insert_col_in_first_position(corrected_team_player_stats),
+            _insert_col_in_first_position(team_player_stats),
             inactive_player_info,
         )
 
@@ -226,12 +227,11 @@ class DataExtractor:
 
         league_number = LEAGUE_MAPPING[self.league_name]
         league_list = []
+        standings = statsapi.standings_data(league_number, season=SEASON_YEAR)
 
         for division in LEAGUE_DIVISION_MAPPING[league_number]:
             division_results: pd.DataFrame = pd.DataFrame(
-                statsapi.standings_data(league_number, season=SEASON_YEAR)[division][
-                    "teams"
-                ]  # type: ignore
+                standings[division]["teams"]  # type: ignore
             )
             league_list.append(division_results)
 
@@ -239,26 +239,16 @@ class DataExtractor:
         league_standings["date"] = DATE_TIME_EXECUTION
         self.league_standings = league_standings
 
-    def set_league_team_rosters_player_names(self) -> None:
+    def set_league_team_roster_players(self) -> None:
         """
-        Uses set_league_division_standings to generate the player names for each team roster.
+        Load player IDs and names for each team in the league standings.
         """
         self.set_league_division_standings()
         team_ids = self.league_standings["team_id"].values
 
-        league_team_rosters = {
-            team_id: statsapi.roster(team_id, season=SEASON_YEAR).split("\n")
-            for team_id in team_ids
+        self.league_team_roster_players = {
+            int(team_id): _get_team_roster_players(int(team_id)) for team_id in team_ids
         }
-
-        league_team_rosters_player_names = {
-            team_id: [
-                _extract_player_name(player) for player in league_team_rosters[team_id]
-            ]
-            for team_id in team_ids
-        }
-
-        self.league_team_rosters_player_names = league_team_rosters_player_names  # type: ignore
 
 
 if __name__ == "__main__":
@@ -268,7 +258,7 @@ if __name__ == "__main__":
     with create_connection(db_path) as conn:
         data_extractor = DataExtractor(league_name=LEAGUE_NAME)
 
-        data_extractor.set_league_team_rosters_player_names()
+        data_extractor.set_league_team_roster_players()
         logger.info(
             "league_standings_loaded",
             standings_shape=data_extractor.league_standings.shape,
