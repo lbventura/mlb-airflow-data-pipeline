@@ -13,10 +13,10 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
 )
 from mlb_airflow_data_pipeline.logging_setup import get_logger
 from mlb_airflow_data_pipeline.db_utils import (
+    backup_database_before_migration,
     create_connection,
-    ensure_dataframe_columns,
     get_database_path,
-    insert_dataframe,
+    save_extraction_run,
 )
 
 DATE_TIME_EXECUTION = datetime.today().strftime("%Y-%m-%d")
@@ -261,59 +261,51 @@ class DataExtractor:
         self.league_team_rosters_player_names = league_team_rosters_player_names  # type: ignore
 
 
+def run_extraction(database_path: str, league_name: str, execution_date: str) -> None:
+    """Extract one league and save it only when every team succeeds."""
+    logger.info("extraction_started", league=league_name, date=execution_date)
+    data_extractor = DataExtractor(league_name=league_name)
+    data_extractor.set_league_team_rosters_player_names()
+    logger.info(
+        "league_standings_loaded",
+        standings_shape=data_extractor.league_standings.shape,
+    )
+
+    data_extractor.set_team_ids_and_names()
+    logger.info(
+        "team_mapping_created", teams_count=len(data_extractor.team_id_name_mapping)
+    )
+    player_stats, inactive_players_per_team, failed_teams = (
+        data_extractor.get_player_stats_per_league()
+    )
+    if failed_teams:
+        logger.error("teams_extraction_failed", failed_teams=failed_teams)
+        raise RuntimeError(f"Extraction failed for teams: {', '.join(failed_teams)}")
+
+    backup_database_before_migration(database_path)
+    with create_connection(database_path) as conn:
+        save_extraction_run(
+            conn,
+            league_name,
+            execution_date,
+            data_extractor.league_standings,
+            player_stats,
+        )
+    logger.info(
+        "extraction_completed",
+        players_total=len(player_stats),
+        inactive_players_count=sum(
+            len(players) for players in inactive_players_per_team.values()
+        ),
+        failed_teams_count=0,
+        database_path=database_path,
+        table="player_stats",
+    )
+    if inactive_players_per_team:
+        logger.warning(
+            "inactive_players_found", inactive_players=inactive_players_per_team
+        )
+
+
 if __name__ == "__main__":
-    logger.info("extraction_started", league=LEAGUE_NAME, date=DATE_TIME_EXECUTION)
-
-    db_path = get_database_path()
-    with create_connection(db_path) as conn:
-        data_extractor = DataExtractor(league_name=LEAGUE_NAME)
-
-        data_extractor.set_league_team_rosters_player_names()
-        logger.info(
-            "league_standings_loaded",
-            standings_shape=data_extractor.league_standings.shape,
-        )
-
-        ensure_dataframe_columns(
-            conn, "league_standings", data_extractor.league_standings
-        )
-        insert_dataframe(conn, "league_standings", data_extractor.league_standings)
-        logger.info(
-            "league_standings_saved", database_path=db_path, table="league_standings"
-        )
-
-        data_extractor.set_team_ids_and_names()
-        logger.info(
-            "team_mapping_created", teams_count=len(data_extractor.team_id_name_mapping)
-        )
-
-        (
-            league_player_team_stats_df,
-            inactive_players_per_team,
-            failed_teams,
-        ) = data_extractor.get_player_stats_per_league()
-
-        player_stats_for_run = league_player_team_stats_df.assign(
-            league_name=LEAGUE_NAME
-        )
-        ensure_dataframe_columns(conn, "player_stats", player_stats_for_run)
-        insert_dataframe(conn, "player_stats", player_stats_for_run)
-
-        logger.info(
-            "extraction_completed",
-            players_total=len(league_player_team_stats_df),
-            inactive_players_count=sum(
-                len(players) for players in inactive_players_per_team.values()
-            ),
-            failed_teams_count=len(failed_teams),
-            database_path=db_path,
-            table="player_stats",
-        )
-
-        if inactive_players_per_team:
-            logger.warning(
-                "inactive_players_found", inactive_players=inactive_players_per_team
-            )
-
-        if failed_teams:
-            logger.error("teams_extraction_failed", failed_teams=failed_teams)
+    run_extraction(get_database_path(), LEAGUE_NAME, DATE_TIME_EXECUTION)
