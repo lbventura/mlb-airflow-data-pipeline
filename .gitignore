@@ -13,6 +13,9 @@ dist/
 *.egg-info/
 MANIFEST
 
+# Development tool files
+settings.json
+
 # Development tool caches
 .pytest_cache/
 .mypy_cache/
@@ -24,5 +27,4 @@ dmypy.json
 # Generated pipeline output
 logs/
 mlb_airflow_data_pipeline/db_data/*.csv
-mlb_airflow_data_pipeline/db_data/*.db-journal
 mlb_airflow_data_pipeline/output/
