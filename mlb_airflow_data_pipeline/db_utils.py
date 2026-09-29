@@ -116,7 +116,9 @@ def ensure_dataframe_columns(
         column_type = (
             "INTEGER"
             if pd.api.types.is_integer_dtype(dtype) or pd.api.types.is_bool_dtype(dtype)
-            else "REAL" if pd.api.types.is_float_dtype(dtype) else "TEXT"
+            else "REAL"
+            if pd.api.types.is_float_dtype(dtype)
+            else "TEXT"
         )
         quoted_column = '"' + column.replace('"', '""') + '"'
         conn.execute(

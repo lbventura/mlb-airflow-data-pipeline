@@ -45,4 +45,3 @@ Pytest excludes tests marked `manual` by default; see `pytest.ini`.
 - `tests/unit/` and `tests/integration/`: unit and integration tests.
 - `.github/workflows/`: GitHub Actions test workflow.
 - `.pre-commit-config.yaml`: whitespace, YAML, mypy, and Ruff hooks.
-

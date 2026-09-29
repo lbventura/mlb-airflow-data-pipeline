@@ -38,9 +38,7 @@ def airflow(*args: str, timeout: int = CLI_TIMEOUT_SECONDS) -> str:
 
 def task_states(run_id: str) -> str:
     """Return task-state rows without the CLI warning logs."""
-    output = airflow(
-        "tasks", "states-for-dag-run", DAG_ID, run_id, "--output", "plain"
-    )
+    output = airflow("tasks", "states-for-dag-run", DAG_ID, run_id, "--output", "plain")
     return "\n".join(
         line
         for line in output.splitlines()
@@ -56,9 +54,7 @@ def setup_airflow(tmp_path_factory: pytest.TempPathFactory) -> None:
     if shutil.which("airflow") is None:
         pytest.skip("Airflow is not installed")
 
-    os.environ.setdefault(
-        "AIRFLOW_HOME", str(tmp_path_factory.mktemp("airflow-home"))
-    )
+    os.environ.setdefault("AIRFLOW_HOME", str(tmp_path_factory.mktemp("airflow-home")))
     os.environ.setdefault(
         "MLB_AIRFLOW_DATA_DIR", str(tmp_path_factory.mktemp("mlb-airflow-data"))
     )

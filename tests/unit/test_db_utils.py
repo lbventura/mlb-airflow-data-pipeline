@@ -177,9 +177,7 @@ def test_ensure_dataframe_columns_preserves_existing_rows(
         "league_standings",
         pd.DataFrame({"name": ["Existing team"]}),
     )
-    current_standings = pd.DataFrame(
-        {"name": ["New team"], "date": ["2026-09-25"]}
-    )
+    current_standings = pd.DataFrame({"name": ["New team"], "date": ["2026-09-25"]})
 
     ensure_dataframe_columns(db_connection, "league_standings", current_standings)
     insert_dataframe(db_connection, "league_standings", current_standings)
