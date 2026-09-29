@@ -16,7 +16,7 @@ LEAGUE_NAME_LOCATION = str(PROJECT_ROOT / "league_name_choice.txt")
 
 # if there is not an ongoing season, this parameter has to be set to the
 # previous year.
-SEASON_YEAR = 2023
+SEASON_YEAR = 2026
 # set this parameter to False to fetch player career stats
 IS_SEASON_STATS = True
 
@@ -230,7 +230,7 @@ def american_league_team_id_name() -> dict:
         117: "Houston Astros",
         136: "Seattle Mariners",
         108: "Los Angeles Angels",
-        133: "Oakland Athletics",
+        133: "Athletics", # They are no longer the "Oakland Athletics" in the MLB API
         139: "Tampa Bay Rays",
         110: "Baltimore Orioles",
         147: "New York Yankees",
