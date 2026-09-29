@@ -6,6 +6,7 @@ import statsapi
 from mlb_airflow_data_pipeline.statsapi_extraction_script import (
     DataExtractor,
     TeamStats,
+    _get_team_roster_players,
 )
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     LEAGUE_DIVISION_MAPPING,
@@ -38,16 +39,9 @@ def test_lookup_player(lookup_player_expected_result: list[dict[str, Any]]) -> N
 
 
 def test_team_roster() -> None:
-    team_id: int = 147  # NYY
-    result: list[str] = statsapi.roster(team_id, season=SEASON_YEAR).split("\n")
-    assert isinstance(result, list)
+    players = _get_team_roster_players(147)
 
-    player_identifier: str = [player for player in result if "Rizzo" in player][0]
-
-    assert isinstance(player_identifier, str)
-    assert len(player_identifier.split(" ")) == 6
-    # TODO: include regex which checks if player_identifier.split(" ")[-2:]
-    # is of the form "{first_name} {second_name}"
+    assert players[592450] == "Aaron Judge"
 
 
 def test_standings_data() -> None:
@@ -111,7 +105,7 @@ def test_data_extractor_set_team_ids_and_names(
 ) -> None:
     data_extractor: DataExtractor = DataExtractor(league_name=league_name)
 
-    data_extractor.set_league_team_roster_players()
+    data_extractor.set_league_division_standings()
     data_extractor.set_team_ids_and_names()
 
     comparing_elements: list[bool] = [

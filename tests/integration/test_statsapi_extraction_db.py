@@ -2,17 +2,23 @@ import sqlite3
 import tempfile
 from pathlib import Path
 from typing import Iterator
-from unittest.mock import patch
+from unittest.mock import Mock, call, patch
 
 import pandas as pd
 import pytest
+import statsapi
 
+from mlb_airflow_data_pipeline import statsapi_extraction_script as extraction_script
 from mlb_airflow_data_pipeline.db_utils import (
     create_connection,
     insert_dataframe,
     read_table,
 )
 from mlb_airflow_data_pipeline.statsapi_extraction_script import DataExtractor
+from mlb_airflow_data_pipeline.statsapi_parameters_script import (
+    SEASON_YEAR,
+    expected_output_columns,
+)
 
 
 @pytest.fixture
@@ -90,6 +96,85 @@ def test_extraction_script_database_integration(
                 "Pete Alonso",
                 "Ryan Mountcastle",
             ]
+
+
+def test_roster_player_stats_reach_database(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    database_path = tmp_path / "mlb_data.db"
+    standings_data = Mock(
+        return_value={
+            200: {"teams": [{"team_id": 147, "name": "Yankees"}]},
+            201: {"teams": [{"team_id": 111, "name": "Red Sox"}]},
+            202: {"teams": [{"team_id": 133, "name": "Athletics"}]},
+        }
+    )
+    rosters = {
+        147: [
+            {"person": {"id": 101, "fullName": "Player One"}},
+            {"person": {"id": 202, "fullName": "Player Two"}},
+        ],
+        111: [{"person": {"id": 303, "fullName": "Player Three"}}],
+        133: [{"person": {"id": 404, "fullName": "Player Four"}}],
+    }
+    get = Mock(
+        side_effect=lambda endpoint, params: {"roster": rosters[params["teamId"]]}
+    )
+
+    def player_stats_response(player_id: int, type: str) -> str:
+        if player_id == 202:
+            raise TypeError("No player stats")
+        columns = set(expected_output_columns()) - {"playername", "team_id", "date"}
+        return "\n".join(
+            f"{column}: {player_id if column == 'hits' else 0}"
+            for column in sorted(columns)
+        )
+
+    player_stats = Mock(side_effect=player_stats_response)
+    lookup_player = Mock(side_effect=AssertionError("Unexpected name lookup"))
+    monkeypatch.setattr(extraction_script, "LEAGUE_NAME", "american_league")
+    monkeypatch.setattr(
+        extraction_script, "get_database_path", lambda: str(database_path)
+    )
+    monkeypatch.setattr(statsapi, "standings_data", standings_data)
+    monkeypatch.setattr(statsapi, "get", get)
+    monkeypatch.setattr(statsapi, "player_stats", player_stats)
+    monkeypatch.setattr(statsapi, "lookup_player", lookup_player)
+
+    extraction_script.run_extraction()
+
+    with sqlite3.connect(database_path) as conn:
+        rows = conn.execute(
+            """SELECT playername, team_id, hits, date, league_name
+               FROM player_stats ORDER BY team_id"""
+        ).fetchall()
+        standings_count = conn.execute(
+            "SELECT COUNT(*) FROM league_standings"
+        ).fetchone()[0]
+
+    execution_date = extraction_script.DATE_TIME_EXECUTION
+    assert rows == [
+        ("Player Three", 111, "303", execution_date, "american_league"),
+        ("Player Four", 133, "404", execution_date, "american_league"),
+        ("Player One", 147, "101", execution_date, "american_league"),
+    ]
+    assert standings_count == 3
+    standings_data.assert_called_once_with(103, season=SEASON_YEAR)
+    assert get.call_args_list == [
+        call(
+            "team_roster",
+            {
+                "teamId": team_id,
+                "season": SEASON_YEAR,
+                "rosterType": "active",
+            },
+        )
+        for team_id in (147, 111, 133)
+    ]
+    assert player_stats.call_args_list == [
+        call(player_id, type="season") for player_id in (101, 202, 303, 404)
+    ]
+    lookup_player.assert_not_called()
 
 
 def test_data_extractor_creates_valid_dataframes() -> None:
