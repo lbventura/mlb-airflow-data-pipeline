@@ -28,6 +28,7 @@ Keep code in the layer that owns its behavior. Avoid duplicating pipeline logic 
 - Keep database writes explicit and review transaction, commit, and failure behavior when changing persistence code.
 - Do not add dependencies, configuration layers, or compatibility paths unless the task needs them.
 - Never commit credentials, local machine paths, generated database contents, or other machine-specific artifacts.
+- Do not commit code nor push changes to a PR without explicit approval from one of the maintainers, unless the maintainer asks for a contribution without their review. Always run all unit and integration tests, as well as the pre-commit checks before creating a new PR or asking maintainers for a review.
 
 ## Tests and verification
 
@@ -41,7 +42,7 @@ Keep code in the layer that owns its behavior. Avoid duplicating pipeline logic 
 
 Create a branch from an up-to-date `main`. Use a prefix found in the repository's branch history, then add a short, lowercase, hyphen-separated description:
 
-- `enhancement/` for new 
+- `enhancement/` for new
 - `maintenance/` for upkeep, dependency, and tooling changes.
 - `observability/` for logging and diagnostics.
 - `testing/` for tests and test infrastructure.
@@ -62,4 +63,3 @@ Base the description on the changes in the branch and the checks actually run. K
 ```markdown
 <One sentence summary on what changed and why. Reference to any relevant issues or previous PRs>
 ```
-
