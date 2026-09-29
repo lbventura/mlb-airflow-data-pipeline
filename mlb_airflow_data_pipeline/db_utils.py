@@ -1,13 +1,35 @@
+"""SQLite storage for extracted baseball statistics.
+
+A run is one league's daily snapshot, identified by (league_name, date).
+A subsequent successful extraction for that league and date replaces the snapshot.
+
+The run tables, league_standings and player_stats, hold snapshots for many
+leagues and dates. Each standings row describes a team; each player row
+describes a player on a team.
+
+A run key uniquely identifies a row within these tables: league and date plus
+team_id for standings, and additionally player_id for player statistics.
+For example, ("american_league", "2026-09-26", 147, 592450) identifies one
+player's row on one team that day. Keeping team_id allows a player to appear
+on multiple teams in the same snapshot. RUN_KEYS defines these column sets;
+all key columns must be non-null and together form the table's primary key.
+"""
+
 import os
 import sqlite3
 import tempfile
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Iterator, Literal
 
 import pandas as pd
 
 from mlb_airflow_data_pipeline.statsapi_parameters_script import DATA_FILE_LOCATION
+
+RUN_KEYS = {
+    "league_standings": ("league_name", "date", "team_id"),
+    "player_stats": ("league_name", "date", "team_id", "player_id"),
+}
 
 
 @contextmanager
@@ -104,29 +126,9 @@ def ensure_dataframe_columns(
     conn: sqlite3.Connection, table_name: str, dataframe: pd.DataFrame
 ) -> None:
     """Add new DataFrame columns to an existing SQLite table before appending."""
-    quoted_table = '"' + table_name.replace('"', '""') + '"'
-    existing_columns = {
-        row[1] for row in conn.execute(f"PRAGMA table_info({quoted_table})")
-    }
-    if not existing_columns:
-        return
-
-    for column in dataframe.columns:
-        if column in existing_columns:
-            continue
-        dtype = dataframe[column].dtype
-        column_type = (
-            "INTEGER"
-            if pd.api.types.is_integer_dtype(dtype) or pd.api.types.is_bool_dtype(dtype)
-            else "REAL"
-            if pd.api.types.is_float_dtype(dtype)
-            else "TEXT"
-        )
-        quoted_column = '"' + column.replace('"', '""') + '"'
-        conn.execute(
-            f"ALTER TABLE {quoted_table} ADD COLUMN {quoted_column} {column_type}"
-        )
-    conn.commit()
+    if conn.execute(f"PRAGMA table_info({_quoted(table_name)})").fetchone():
+        _add_dataframe_columns(conn, table_name, dataframe)
+        conn.commit()
 
 
 def _quoted(name: str) -> str:
@@ -143,102 +145,138 @@ def _column_type(series: pd.Series) -> str:
     return "TEXT"
 
 
-def _ensure_run_table(
+def _add_dataframe_columns(
     conn: sqlite3.Connection, table_name: str, dataframe: pd.DataFrame
 ) -> None:
-    key_columns = (
-        ("league_name", "date", "team_id")
-        if table_name == "league_standings"
-        else ("league_name", "date", "team_id", "player_id")
-    )
-    definitions = [
-        f'{_quoted(column)} {_column_type(dataframe[column])} NOT NULL'
-        for column in key_columns
-    ]
-    conn.execute(
-        f'CREATE TABLE IF NOT EXISTS {_quoted(table_name)} '
-        f'({", ".join(definitions)})'
-    )
-    existing_columns = {
-        row[1] for row in conn.execute(f'PRAGMA table_info({_quoted(table_name)})')
+    existing = {
+        row[1] for row in conn.execute(f"PRAGMA table_info({_quoted(table_name)})")
     }
     for column in dataframe.columns:
-        if column not in existing_columns:
+        if column not in existing:
             conn.execute(
-                f'ALTER TABLE {_quoted(table_name)} '
-                f'ADD COLUMN {_quoted(column)} {_column_type(dataframe[column])}'
+                f"ALTER TABLE {_quoted(table_name)} "
+                f"ADD COLUMN {_quoted(column)} {_column_type(dataframe[column])}"
             )
+
+
+def _has_run_key(table_info: list[tuple], keys: tuple[str, ...]) -> bool:
+    """Check that the schema enforces the expected unique, non-null row key.
+
+    table_info contains SQLite PRAGMA table_info rows: positions 1, 3, and 5
+    are the column name, NOT NULL flag, and one-based primary-key position
+    (zero for non-key columns). The primary key must match keys in order,
+    with no extra columns. This checks the schema, not whether a run exists;
+    it also tells migration code whether the table has already been upgraded.
+    """
+    constraints = {row[1]: (row[3], row[5]) for row in table_info}
+    return sum(row[5] > 0 for row in table_info) == len(keys) and all(
+        constraints.get(key) == (1, position)
+        for position, key in enumerate(keys, start=1)
+    )
+
+
+def _create_run_table(
+    conn: sqlite3.Connection,
+    table_name: str,
+    columns: dict[str, str],
+    keys: tuple[str, ...],
+) -> None:
+    """Create a statistics table with one row per run key, without committing.
+
+    keys includes the snapshot's league/date and its team or team/player IDs.
+    Non-key columns hold names and statistics and may contain missing values.
+    """
+    definitions = [
+        f"{_quoted(column)} {column_type}" + (" NOT NULL" if column in keys else "")
+        for column, column_type in columns.items()
+    ]
+    definitions.append(f"PRIMARY KEY ({', '.join(_quoted(key) for key in keys)})")
+    conn.execute(f"CREATE TABLE {_quoted(table_name)} ({', '.join(definitions)})")
 
 
 def _archive_legacy_rows(conn: sqlite3.Connection, table_name: str) -> None:
+    """Copy every original row before rebuilding, within the caller's transaction.
+
+    Preserve any earlier archive, extending its schema and appending by column name.
+    Routine saves never modify the archive after the table has a non-null run key.
+    """
     archive_name = f"legacy_{table_name}"
-    archive_exists = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
-        (archive_name,),
-    ).fetchone()
-    if not archive_exists:
-        conn.execute(
-            f'CREATE TABLE {_quoted(archive_name)} AS '
-            f'SELECT * FROM {_quoted(table_name)} WHERE 0'
-        )
-    else:
-        archived_columns = {
-            row[1]
-            for row in conn.execute(f'PRAGMA table_info({_quoted(archive_name)})')
-        }
-        for row in conn.execute(f'PRAGMA table_info({_quoted(table_name)})'):
-            if row[1] not in archived_columns:
-                conn.execute(
-                    f'ALTER TABLE {_quoted(archive_name)} '
-                    f'ADD COLUMN {_quoted(row[1])} {row[2]}'
-                )
-    missing_key = (
-        "date IS NULL OR league_name IS NULL"
-        if table_name == "league_standings"
-        else "date IS NULL OR league_name IS NULL OR player_id IS NULL"
-    )
-    condition = missing_key if not archive_exists else "date IS NULL"
     conn.execute(
-        f'INSERT INTO {_quoted(archive_name)} '
-        f'SELECT * FROM {_quoted(table_name)} WHERE {condition}'
+        f"CREATE TABLE IF NOT EXISTS {_quoted(archive_name)} AS "
+        f"SELECT * FROM {_quoted(table_name)} WHERE 0"
     )
-    conn.execute(f'DELETE FROM {_quoted(table_name)} WHERE date IS NULL')
-
-
-def _resolve_existing_duplicates(
-    conn: sqlite3.Connection, table_name: str, keys: list[str]
-) -> None:
-    """Archive repeated stored keys; retain identical rows only once."""
-    key_columns = ", ".join(_quoted(key) for key in keys)
-    required_keys = " AND ".join(f'{_quoted(key)} IS NOT NULL' for key in keys)
-    rows = conn.execute(
-        f'SELECT rowid, * FROM {_quoted(table_name)} WHERE {required_keys} '
-        f'ORDER BY {key_columns}, rowid'
-    ).fetchall()
-    groups: dict[tuple, list[tuple]] = {}
-    columns = [
-        row[1] for row in conn.execute(f'PRAGMA table_info({_quoted(table_name)})')
-    ]
-    key_positions = [columns.index(key) + 1 for key in keys]
-    for row in rows:
-        key = tuple(row[position] for position in key_positions)
-        groups.setdefault(key, []).append(row)
-
-    for group in groups.values():
-        if len(group) < 2:
-            continue
-        for row in group:
+    archived_columns = {
+        row[1] for row in conn.execute(f"PRAGMA table_info({_quoted(archive_name)})")
+    }
+    columns = []
+    for row in conn.execute(f"PRAGMA table_info({_quoted(table_name)})"):
+        column, column_type = row[1], row[2]
+        columns.append(_quoted(column))
+        if column not in archived_columns:
             conn.execute(
-                f'INSERT INTO {_quoted("legacy_" + table_name)} '
-                f'SELECT * FROM {_quoted(table_name)} WHERE rowid = ?',
-                (row[0],),
+                f"ALTER TABLE {_quoted(archive_name)} "
+                f"ADD COLUMN {_quoted(column)} {column_type}"
             )
-        keep_one = all(row[1:] == group[0][1:] for row in group[1:])
-        to_delete = group[1:] if keep_one else group
-        conn.executemany(
-            f'DELETE FROM {_quoted(table_name)} WHERE rowid = ?',
-            ((row[0],) for row in to_delete),
+    column_names = ", ".join(columns)
+    conn.execute(
+        f"INSERT INTO {_quoted(archive_name)} ({column_names}) "
+        f"SELECT {column_names} FROM {_quoted(table_name)}"
+    )
+
+
+def _ensure_run_table(
+    conn: sqlite3.Connection, table_name: str, dataframe: pd.DataFrame
+) -> None:
+    """Create or migrate a run table, then add new statistics without committing.
+
+    Migration archives the source and retains fully keyed, unambiguous history.
+    Identical copies collapse; conflicting values remain only in the archive.
+    The non-null primary key marks completion, so later saves only check schema.
+    """
+    keys = RUN_KEYS[table_name]
+    table_info = conn.execute(f"PRAGMA table_info({_quoted(table_name)})").fetchall()
+    if not table_info:
+        columns = {
+            column: _column_type(dataframe[column]) for column in dataframe.columns
+        }
+        _create_run_table(conn, table_name, columns, keys)
+        return
+    if _has_run_key(table_info, keys):
+        _add_dataframe_columns(conn, table_name, dataframe)
+        return
+    _migrate_run_table(conn, table_name, dataframe)
+
+
+def _migrate_run_table(
+    conn: sqlite3.Connection, table_name: str, dataframe: pd.DataFrame
+) -> None:
+    """Archive and rebuild a legacy table once, retaining unambiguous keyed rows."""
+    keys = RUN_KEYS[table_name]
+    _archive_legacy_rows(conn, table_name)
+    _add_dataframe_columns(conn, table_name, dataframe)
+    columns = {
+        row[1]: row[2]
+        for row in conn.execute(f"PRAGMA table_info({_quoted(table_name)})")
+    }
+    replacement = f"migrated_{table_name}"
+    _create_run_table(conn, replacement, columns, keys)
+    key_columns = ", ".join(_quoted(key) for key in keys)
+    required_keys = " AND ".join(f"{_quoted(key)} IS NOT NULL" for key in keys)
+    conn.execute(
+        f"""
+        WITH distinct_rows AS (
+            SELECT DISTINCT * FROM {_quoted(table_name)} WHERE {required_keys}
+        ), unambiguous_keys AS (
+            SELECT {key_columns} FROM distinct_rows
+            GROUP BY {key_columns} HAVING COUNT(*) = 1
         )
+        INSERT INTO {_quoted(replacement)}
+        SELECT distinct_rows.* FROM distinct_rows
+        JOIN unambiguous_keys USING ({key_columns})
+        """
+    )
+    conn.execute(f"DROP TABLE {_quoted(table_name)}")
+    conn.execute(f"ALTER TABLE {_quoted(replacement)} RENAME TO {_quoted(table_name)}")
 
 
 def _insert_rows(
@@ -246,18 +284,13 @@ def _insert_rows(
 ) -> None:
     columns = list(dataframe.columns)
     placeholders = ", ".join("?" for _ in columns)
-    sql = (
-        f'INSERT INTO {_quoted(table_name)} '
-        f'({", ".join(_quoted(column) for column in columns)}) '
-        f'VALUES ({placeholders})'
+    insert_statement = (
+        f"INSERT INTO {_quoted(table_name)} "
+        f"({', '.join(_quoted(column) for column in columns)}) "
+        f"VALUES ({placeholders})"
     )
-    rows = (
-        tuple(value.item() if hasattr(value, "item") else value for value in row)
-        for row in dataframe.astype(object).where(pd.notna(dataframe), None).itertuples(
-            index=False, name=None
-        )
-    )
-    conn.executemany(sql, rows)
+    normalized = dataframe.astype(object).where(pd.notna(dataframe), None)
+    conn.executemany(insert_statement, normalized.itertuples(index=False, name=None))
 
 
 def backup_database_before_migration(database_path: str) -> None:
@@ -267,22 +300,21 @@ def backup_database_before_migration(database_path: str) -> None:
         return
     backup_path = source_path.with_name(source_path.name + ".pre-issue-62.bak")
     source_uri = source_path.resolve().as_uri() + "?mode=ro"
-    with sqlite3.connect(source_uri, uri=True) as source:
-        has_run_tables = source.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' "
-            "AND name IN ('league_standings', 'player_stats')"
-        ).fetchone()
-        already_migrated = source.execute(
-            "SELECT 1 FROM sqlite_master WHERE type = 'table' "
-            "AND name = 'legacy_league_standings'"
-        ).fetchone()
-        if not has_run_tables or already_migrated or backup_path.exists():
+    with closing(sqlite3.connect(source_uri, uri=True)) as source:
+        needs_migration = False
+        for table_name, keys in RUN_KEYS.items():
+            table_info = source.execute(
+                f"PRAGMA table_info({_quoted(table_name)})"
+            ).fetchall()
+            if table_info and not _has_run_key(table_info, keys):
+                needs_migration = True
+        if not needs_migration or backup_path.exists():
             return
 
         with tempfile.NamedTemporaryFile(dir=source_path.parent, delete=False) as file:
             temporary_path = Path(file.name)
         try:
-            with sqlite3.connect(temporary_path) as backup:
+            with closing(sqlite3.connect(temporary_path)) as backup:
                 source.backup(backup)
             try:
                 os.link(temporary_path, backup_path)
@@ -299,55 +331,40 @@ def save_extraction_run(
     standings: pd.DataFrame,
     player_stats: pd.DataFrame,
 ) -> None:
-    """Replace one league's daily standings and player statistics atomically."""
-    standings_for_run = standings.assign(
-        league_name=league_name, date=execution_date
-    )
-    players_for_run = player_stats.assign(
-        league_name=league_name, date=execution_date
-    ).copy()
+    """Replace one league's daily standings and player statistics atomically.
+
+    league_name and execution_date select the snapshot replaced in both run
+    tables. Run keys distinguish its individual team and player rows; repeated
+    incoming keys keep the last row. player_stats carries player IDs in its index.
+    """
+    standings_for_run = standings.assign(league_name=league_name, date=execution_date)
+    players_for_run = player_stats.assign(league_name=league_name, date=execution_date)
     players_for_run.insert(0, "player_id", player_stats.index)
-    batches = (
-        ("league_standings", standings_for_run, ["league_name", "date", "team_id"]),
-        (
-            "player_stats",
-            players_for_run,
-            ["league_name", "date", "team_id", "player_id"],
-        ),
-    )
-    prepared = []
-    for table_name, dataframe, keys in batches:
-        if dataframe.empty or dataframe[keys].isna().any().any():
-            raise ValueError(f"{table_name} has missing run keys or no rows")
-        prepared.append(
-            (table_name, dataframe.drop_duplicates(keys, keep="last"), keys)
-        )
+    batches = {
+        "league_standings": standings_for_run,
+        "player_stats": players_for_run,
+    }
+    for table_name, dataframe in batches.items():
+        keys = RUN_KEYS[table_name]
+        if dataframe.empty:
+            raise ValueError(f"{table_name} has no rows")
+        missing_columns = [key for key in keys if key not in dataframe.columns]
+        if missing_columns:
+            raise ValueError(
+                f"{table_name} has missing run key columns: {missing_columns}"
+            )
+        null_keys = dataframe[list(keys)].isna()
+        if null_keys.any(axis=None):
+            raise ValueError(f"{table_name} has missing run keys (null values)")
+        batches[table_name] = dataframe.drop_duplicates(list(keys), keep="last")
 
     conn.execute("SAVEPOINT extraction_run")
     try:
-        for table_name, dataframe, keys in prepared:
+        for table_name, dataframe in batches.items():
             _ensure_run_table(conn, table_name, dataframe)
-            _archive_legacy_rows(conn, table_name)
-
-        team_ids = prepared[0][1]["team_id"].tolist()
-        conn.execute(
-            'DELETE FROM league_standings WHERE league_name = ? AND date = ?',
-            (league_name, execution_date),
-        )
-        conn.execute(
-            'DELETE FROM league_standings WHERE league_name IS NULL AND date = ? '
-            f'AND team_id IN ({", ".join("?" for _ in team_ids)})',
-            (execution_date, *team_ids),
-        )
-        conn.execute(
-            'DELETE FROM player_stats WHERE league_name = ? AND date = ?',
-            (league_name, execution_date),
-        )
-        for table_name, dataframe, keys in prepared:
-            _resolve_existing_duplicates(conn, table_name, keys)
             conn.execute(
-                f'CREATE UNIQUE INDEX IF NOT EXISTS {_quoted(table_name + "_run_key")} '
-                f'ON {_quoted(table_name)} ({", ".join(_quoted(key) for key in keys)})'
+                f"DELETE FROM {_quoted(table_name)} WHERE league_name = ? AND date = ?",
+                (league_name, execution_date),
             )
             _insert_rows(conn, table_name, dataframe)
         conn.execute("RELEASE SAVEPOINT extraction_run")

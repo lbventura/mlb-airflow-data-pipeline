@@ -27,4 +27,6 @@ dmypy.json
 # Generated pipeline output
 logs/
 mlb_airflow_data_pipeline/db_data/*.csv
+mlb_airflow_data_pipeline/db_data/*.db-journal
+*.pre-issue-62.bak
 mlb_airflow_data_pipeline/output/

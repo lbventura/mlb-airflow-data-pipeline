@@ -289,6 +289,9 @@ def run_extraction(database_path: str, league_name: str, execution_date: str) ->
             player_stats,
         )
     logger.info(
+        "league_standings_saved", database_path=database_path, table="league_standings"
+    )
+    logger.info(
         "extraction_completed",
         players_total=len(player_stats),
         inactive_players_count=sum(

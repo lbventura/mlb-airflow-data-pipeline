@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from mlb_airflow_data_pipeline.db_utils import create_connection, insert_dataframe
+from mlb_airflow_data_pipeline.db_utils import create_connection, save_extraction_run
 from mlb_airflow_data_pipeline.statsapi_treatment_script import treat_player_stats
 
 
@@ -18,12 +18,23 @@ def test_treatment_reads_scoped_player_stats_and_writes_outputs(
         / "unit"
         / "national_league_example_full_player_stats_df.csv",
         index_col=0,
-    ).assign(date=execution_date, league_name=league_name)
-    player_stats.loc[0, "league_name"] = "american_league"
+    )
+    standings = pd.DataFrame({"team_id": player_stats.team_id.unique()})
 
     database_path = tmp_path / "mlb_data.db"
     with create_connection(str(database_path)) as conn:
-        insert_dataframe(conn, "player_stats", player_stats)
+        save_extraction_run(conn, league_name, execution_date, standings, player_stats)
+        other_players = player_stats.assign(playername="Other league")
+        save_extraction_run(
+            conn, "american_league", execution_date, standings, other_players
+        )
+        save_extraction_run(
+            conn,
+            league_name,
+            "2025-12-31",
+            standings,
+            player_stats.assign(playername="Other date"),
+        )
 
     treat_player_stats(str(database_path), league_name, execution_date, str(tmp_path))
 
@@ -34,3 +45,4 @@ def test_treatment_reads_scoped_player_stats_and_writes_outputs(
         output_data = pd.read_csv(output_path, index_col=0)
         assert not output_data.empty
         assert "playername" in output_data.columns
+        assert not output_data.playername.isin(["Other league", "Other date"]).any()

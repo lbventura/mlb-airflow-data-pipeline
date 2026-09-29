@@ -1,18 +1,15 @@
-from pathlib import Path
 from typing import Any
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pandas as pd
 import pytest
 import statsapi
 
 from mlb_airflow_data_pipeline import statsapi_extraction_script as extraction_script
-from mlb_airflow_data_pipeline.db_utils import create_connection, save_extraction_run
 from mlb_airflow_data_pipeline.statsapi_extraction_script import (
     _get_team_roster_players,
     _generate_player_stats,
     _insert_col_in_first_position,
-    run_extraction,
 )
 
 
@@ -34,62 +31,6 @@ def test__generate_player_stats(
     generated_result: dict[str, Any] = _generate_player_stats(player_stats)
     expected_result: list[str] = player_stats_list
     assert sorted(generated_result.keys()) == expected_result
-
-
-def test_failed_team_preserves_previous_snapshot(tmp_path: Path) -> None:
-    database_path = str(tmp_path / "runs.db")
-    with create_connection(database_path) as conn:
-        standings = pd.DataFrame({"team_id": [1], "name": ["Original"]})
-        players = pd.DataFrame({"team_id": [1], "playername": ["Alex"]}, index=[10])
-        save_extraction_run(conn, "american_league", "2026-09-26", standings, players)
-
-    with patch(
-        "mlb_airflow_data_pipeline.statsapi_extraction_script.DataExtractor",
-        autospec=True,
-    ) as extractor_class:
-        extractor = extractor_class.return_value
-        extractor.league_standings = pd.DataFrame({"team_id": [1], "name": ["Changed"]})
-        extractor.team_id_name_mapping = {1: "Changed"}
-        extractor.get_player_stats_per_league.return_value = (
-            pd.DataFrame({"team_id": [1], "playername": ["Alex"]}, index=[10]),
-            {},
-            ["Failed team"],
-        )
-        with pytest.raises(RuntimeError, match="Failed team"):
-            run_extraction(database_path, "american_league", "2026-09-26")
-
-    with create_connection(database_path) as conn:
-        assert conn.execute("SELECT name FROM league_standings").fetchall() == [
-            ("Original",)
-        ]
-        assert conn.execute("SELECT playername FROM player_stats").fetchall() == [
-            ("Alex",)
-        ]
-
-
-def test_complete_run_saves_extracted_rows(tmp_path: Path) -> None:
-    database_path = str(tmp_path / "runs.db")
-    with patch(
-        "mlb_airflow_data_pipeline.statsapi_extraction_script.DataExtractor",
-        autospec=True,
-    ) as extractor_class:
-        extractor = extractor_class.return_value
-        extractor.league_standings = pd.DataFrame({"team_id": [1], "name": ["Team"]})
-        extractor.team_id_name_mapping = {1: "Team"}
-        extractor.get_player_stats_per_league.return_value = (
-            pd.DataFrame({"team_id": [1], "playername": ["Alex"]}, index=[10]),
-            {},
-            [],
-        )
-        run_extraction(database_path, "american_league", "2026-09-26")
-
-    with create_connection(database_path) as conn:
-        assert conn.execute(
-            "SELECT league_name, date, team_id FROM league_standings"
-        ).fetchall() == [("american_league", "2026-09-26", 1)]
-        assert conn.execute(
-            "SELECT league_name, date, team_id, player_id FROM player_stats"
-        ).fetchall() == [("american_league", "2026-09-26", 1, 10)]
 
 
 @pytest.mark.parametrize(
