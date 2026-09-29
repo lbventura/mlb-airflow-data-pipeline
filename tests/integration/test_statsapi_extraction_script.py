@@ -40,9 +40,8 @@ def test_lookup_player(lookup_player_expected_result: list[dict[str, Any]]) -> N
 
 def test_team_roster() -> None:
     players = _get_team_roster_players(147)
-
-    assert players[592450] == "Aaron Judge"
-
+    # assert players[592450] == "Aaron Judge" # TODO: Revert this once Aaron Judge is off the IL
+    assert players[502671] == "Paul Goldschmidt"
 
 def test_standings_data() -> None:
     american_league_id: int = LEAGUE_MAPPING["american_league"]
