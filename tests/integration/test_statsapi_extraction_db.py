@@ -102,6 +102,7 @@ def test_roster_player_stats_reach_database(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     database_path = tmp_path / "mlb_data.db"
+    execution_date = "2026-09-26"
     standings_data = Mock(
         return_value={
             200: {"teams": [{"team_id": 147, "name": "Yankees"}]},
@@ -132,16 +133,14 @@ def test_roster_player_stats_reach_database(
 
     player_stats = Mock(side_effect=player_stats_response)
     lookup_player = Mock(side_effect=AssertionError("Unexpected name lookup"))
-    monkeypatch.setattr(extraction_script, "LEAGUE_NAME", "american_league")
-    monkeypatch.setattr(
-        extraction_script, "get_database_path", lambda: str(database_path)
-    )
     monkeypatch.setattr(statsapi, "standings_data", standings_data)
     monkeypatch.setattr(statsapi, "get", get)
     monkeypatch.setattr(statsapi, "player_stats", player_stats)
     monkeypatch.setattr(statsapi, "lookup_player", lookup_player)
 
-    extraction_script.run_extraction()
+    extraction_script.run_extraction(
+        str(database_path), "american_league", execution_date
+    )
 
     with sqlite3.connect(database_path) as conn:
         rows = conn.execute(
@@ -152,7 +151,6 @@ def test_roster_player_stats_reach_database(
             "SELECT COUNT(*) FROM league_standings"
         ).fetchone()[0]
 
-    execution_date = extraction_script.DATE_TIME_EXECUTION
     assert rows == [
         ("Player Three", 111, "303", execution_date, "american_league"),
         ("Player Four", 133, "404", execution_date, "american_league"),

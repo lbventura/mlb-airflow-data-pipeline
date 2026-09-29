@@ -257,14 +257,12 @@ class DataExtractor:
             int(team_id): _get_team_roster_players(int(team_id)) for team_id in team_ids
         }
 
-        self.league_team_rosters_player_names = league_team_rosters_player_names  # type: ignore
-
 
 def run_extraction(database_path: str, league_name: str, execution_date: str) -> None:
     """Extract one league and save it only when every team succeeds."""
     logger.info("extraction_started", league=league_name, date=execution_date)
     data_extractor = DataExtractor(league_name=league_name)
-    data_extractor.set_league_team_rosters_player_names()
+    data_extractor.set_league_team_roster_players()
     logger.info(
         "league_standings_loaded",
         standings_shape=data_extractor.league_standings.shape,

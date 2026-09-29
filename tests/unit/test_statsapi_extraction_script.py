@@ -1,12 +1,10 @@
 from pathlib import Path
 from typing import Any
-from unittest.mock import Mock
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pandas as pd
 import pytest
 import statsapi
-import pytest
 
 from mlb_airflow_data_pipeline import statsapi_extraction_script as extraction_script
 from mlb_airflow_data_pipeline.db_utils import create_connection, save_extraction_run
@@ -42,18 +40,15 @@ def test_failed_team_preserves_previous_snapshot(tmp_path: Path) -> None:
     database_path = str(tmp_path / "runs.db")
     with create_connection(database_path) as conn:
         standings = pd.DataFrame({"team_id": [1], "name": ["Original"]})
-        players = pd.DataFrame(
-            {"team_id": [1], "playername": ["Alex"]}, index=[10]
-        )
+        players = pd.DataFrame({"team_id": [1], "playername": ["Alex"]}, index=[10])
         save_extraction_run(conn, "american_league", "2026-09-26", standings, players)
 
     with patch(
-        "mlb_airflow_data_pipeline.statsapi_extraction_script.DataExtractor"
+        "mlb_airflow_data_pipeline.statsapi_extraction_script.DataExtractor",
+        autospec=True,
     ) as extractor_class:
         extractor = extractor_class.return_value
-        extractor.league_standings = pd.DataFrame(
-            {"team_id": [1], "name": ["Changed"]}
-        )
+        extractor.league_standings = pd.DataFrame({"team_id": [1], "name": ["Changed"]})
         extractor.team_id_name_mapping = {1: "Changed"}
         extractor.get_player_stats_per_league.return_value = (
             pd.DataFrame({"team_id": [1], "playername": ["Alex"]}, index=[10]),
@@ -75,12 +70,11 @@ def test_failed_team_preserves_previous_snapshot(tmp_path: Path) -> None:
 def test_complete_run_saves_extracted_rows(tmp_path: Path) -> None:
     database_path = str(tmp_path / "runs.db")
     with patch(
-        "mlb_airflow_data_pipeline.statsapi_extraction_script.DataExtractor"
+        "mlb_airflow_data_pipeline.statsapi_extraction_script.DataExtractor",
+        autospec=True,
     ) as extractor_class:
         extractor = extractor_class.return_value
-        extractor.league_standings = pd.DataFrame(
-            {"team_id": [1], "name": ["Team"]}
-        )
+        extractor.league_standings = pd.DataFrame({"team_id": [1], "name": ["Team"]})
         extractor.team_id_name_mapping = {1: "Team"}
         extractor.get_player_stats_per_league.return_value = (
             pd.DataFrame({"team_id": [1], "playername": ["Alex"]}, index=[10]),
