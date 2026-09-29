@@ -47,7 +47,9 @@ def _get_team_roster_players(team_id: int) -> dict[int, str]:
     try:
         roster = response["roster"]
     except (KeyError, TypeError) as error:
-        error.add_note(f"Malformed roster for team {team_id}")
+        logger.error(
+            "malformed_team_roster", team_id=team_id, error=str(error), exc_info=True
+        )
         raise
     players: dict[int, str] = {}
     for entry in roster:
@@ -56,7 +58,12 @@ def _get_team_roster_players(team_id: int) -> dict[int, str]:
             player_id = player["id"]
             full_name = player["fullName"]
         except (KeyError, TypeError) as error:
-            error.add_note(f"Malformed roster entry for team {team_id}")
+            logger.error(
+                "malformed_roster_entry",
+                team_id=team_id,
+                error=str(error),
+                exc_info=True,
+            )
             raise
         if player_id in players:
             raise ValueError(
@@ -251,7 +258,7 @@ class DataExtractor:
         }
 
 
-if __name__ == "__main__":
+def run_extraction() -> None:
     logger.info("extraction_started", league=LEAGUE_NAME, date=DATE_TIME_EXECUTION)
 
     db_path = get_database_path()
@@ -307,3 +314,7 @@ if __name__ == "__main__":
 
         if failed_teams:
             logger.error("teams_extraction_failed", failed_teams=failed_teams)
+
+
+if __name__ == "__main__":
+    run_extraction()
