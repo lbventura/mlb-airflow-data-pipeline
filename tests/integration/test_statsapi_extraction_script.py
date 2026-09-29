@@ -6,6 +6,7 @@ import statsapi
 from mlb_airflow_data_pipeline.statsapi_extraction_script import (
     DataExtractor,
     TeamStats,
+    _get_team_roster_players,
 )
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     LEAGUE_DIVISION_MAPPING,
@@ -38,16 +39,9 @@ def test_lookup_player(lookup_player_expected_result: list[dict[str, Any]]) -> N
 
 
 def test_team_roster() -> None:
-    team_id: int = 147  # NYY
-    result: list[str] = statsapi.roster(team_id, season=SEASON_YEAR).split("\n")
-    assert isinstance(result, list)
+    players = _get_team_roster_players(147)
 
-    player_identifier: str = [player for player in result if "Rizzo" in player][0]
-
-    assert isinstance(player_identifier, str)
-    assert len(player_identifier.split(" ")) == 6
-    # TODO: include regex which checks if player_identifier.split(" ")[-2:]
-    # is of the form "{first_name} {second_name}"
+    assert players[592450] == "Aaron Judge"
 
 
 def test_standings_data() -> None:
@@ -81,22 +75,20 @@ def test_standings_data() -> None:
 def test_team_stats_get_team_stats() -> None:
     # this test requires a manual input of players that are known to be
     # active
-    active_mlb_players: dict[str, int] = {
-        "Aaron Judge": 592450,
-        "Aaron Hicks": 543305,
-        "Gerrit Cole": 543037,
+    active_mlb_players: dict[int, str] = {
+        592450: "Aaron Judge",
+        543305: "Aaron Hicks",
+        543037: "Gerrit Cole",
     }
-    team_stats: TeamStats = TeamStats(
-        player_names_per_team=list(active_mlb_players.keys())
-    )
+    team_stats: TeamStats = TeamStats(active_mlb_players)
     (
         team_player_stats,
-        active_player_name_ids,
+        active_players,
         inactive_player_info,
     ) = team_stats.get_team_stats()
 
-    assert sorted(list(team_player_stats.index)) == sorted(active_mlb_players.values())
-    assert active_player_name_ids
+    assert sorted(list(team_player_stats.index)) == sorted(active_mlb_players)
+    assert active_players == active_mlb_players
     assert not inactive_player_info
 
 
@@ -113,7 +105,7 @@ def test_data_extractor_set_team_ids_and_names(
 ) -> None:
     data_extractor: DataExtractor = DataExtractor(league_name=league_name)
 
-    data_extractor.set_league_team_rosters_player_names()
+    data_extractor.set_league_division_standings()
     data_extractor.set_team_ids_and_names()
 
     comparing_elements: list[bool] = [
