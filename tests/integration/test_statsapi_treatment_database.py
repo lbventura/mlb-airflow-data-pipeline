@@ -25,12 +25,12 @@ def test_treatment_reads_scoped_player_stats_and_writes_outputs(
     with create_connection(str(database_path)) as conn:
         insert_dataframe(conn, "player_stats", player_stats)
 
-    treat_player_stats(
-        str(database_path), league_name, execution_date, str(tmp_path)
-    )
+    treat_player_stats(str(database_path), league_name, execution_date, str(tmp_path))
 
     for player_type in ("batter", "pitcher", "defender"):
-        output_path = tmp_path / f"{league_name}_{execution_date}_{player_type}_stats_df.csv"
+        output_path = (
+            tmp_path / f"{league_name}_{execution_date}_{player_type}_stats_df.csv"
+        )
         output_data = pd.read_csv(output_path, index_col=0)
         assert not output_data.empty
         assert "playername" in output_data.columns
