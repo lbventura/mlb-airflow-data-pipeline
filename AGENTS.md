@@ -28,6 +28,13 @@ Keep code in the layer that owns its behavior. Avoid duplicating pipeline logic 
 - Keep database writes explicit and review transaction, commit, and failure behavior when changing persistence code.
 - Do not add dependencies, configuration layers, or compatibility paths unless the task needs them.
 - Never commit credentials, local machine paths, generated database contents, or other machine-specific artifacts.
+  The scheduled database workflow is the exception: it may commit only
+  `mlb_airflow_data_pipeline/db_data/mlb_data.db` to
+  `maintenance/scheduled-database-update` and create or update the PR titled
+  `Scheduled Database Update`. It must continue from that branch while the PR
+  is open. For these automated data-only PRs, tests run in the separately
+  dispatched CI workflow after publication, without repeating development
+  pre-commit checks; merging remains a maintainer action.
 - Do not commit code nor push changes to a PR without explicit approval from one of the maintainers, unless the maintainer asks for a contribution without their review. Always run all unit and integration tests, as well as the pre-commit checks before creating a new PR or asking maintainers for a review.
 
 ## Tests and verification
