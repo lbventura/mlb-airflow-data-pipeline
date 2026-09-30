@@ -3,9 +3,9 @@
 A run is one league's daily snapshot, identified by (league_name, date).
 A subsequent successful extraction for that league and date replaces the snapshot.
 
-The run tables, league_standings and player_stats, hold snapshots for many
-leagues and dates. Each standings row describes a team; each player row
-describes a player on a team.
+The run tables, league_standings and player_stats, hold daily snapshots for
+the American and National Leagues. Each standings row describes a team;
+each player row describes a player on a team.
 
 A run key uniquely identifies a row within these tables: league and date plus
 team_id for standings, and additionally player_id for player statistics.
@@ -20,7 +20,7 @@ import sqlite3
 import tempfile
 from contextlib import closing, contextmanager
 from pathlib import Path
-from typing import Iterator, Literal
+from typing import Iterator
 
 import pandas as pd
 
@@ -54,81 +54,6 @@ def create_connection(db_file: str) -> Iterator[sqlite3.Connection]:
     finally:
         if conn:
             conn.close()
-
-
-def create_table(conn: sqlite3.Connection, create_table_sql: str) -> None:
-    """Creates a table from a SQL statement.
-
-    Args:
-        conn: Database connection object
-        create_table_sql: SQL CREATE TABLE statement
-
-    Raises:
-        sqlite3.Error: If table creation fails
-    """
-    try:
-        cursor = conn.cursor()
-        cursor.execute(create_table_sql)
-        conn.commit()
-    except sqlite3.Error as e:
-        raise sqlite3.Error(f"Failed to create table: {e}")
-
-
-def insert_dataframe(
-    conn: sqlite3.Connection,
-    table_name: str,
-    df: pd.DataFrame,
-    mode: Literal["fail", "replace", "append"] | None = "append",
-) -> None:
-    """Inserts a pandas DataFrame into a table.
-
-    Args:
-        conn: Database connection object
-        table_name: Name of the target table
-        df: DataFrame to insert
-
-    Raises:
-        sqlite3.Error: If insertion fails
-    """
-    assert mode is not None, "Mode must be one of 'fail', 'replace', or 'append'."
-    try:
-        df.to_sql(table_name, conn, if_exists=mode, index=False)
-        conn.commit()
-    except sqlite3.Error as e:
-        raise sqlite3.Error(f"Failed to insert DataFrame into table {table_name}: {e}")
-    except Exception as e:
-        raise Exception(f"Failed to insert DataFrame into table {table_name}: {e}")
-
-
-def read_table(conn: sqlite3.Connection, table_name: str) -> pd.DataFrame:
-    """Reads a table into a pandas DataFrame.
-
-    Args:
-        conn: Database connection object
-        table_name: Name of the table to read
-
-    Returns:
-        pd.DataFrame: DataFrame containing the table data
-
-    Raises:
-        sqlite3.Error: If reading fails
-    """
-    try:
-        df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
-        return df
-    except sqlite3.Error as e:
-        raise sqlite3.Error(f"Failed to read table {table_name}: {e}")
-    except Exception as e:
-        raise Exception(f"Failed to read table {table_name}: {e}")
-
-
-def ensure_dataframe_columns(
-    conn: sqlite3.Connection, table_name: str, dataframe: pd.DataFrame
-) -> None:
-    """Add new DataFrame columns to an existing SQLite table before appending."""
-    if conn.execute(f"PRAGMA table_info({_quoted(table_name)})").fetchone():
-        _add_dataframe_columns(conn, table_name, dataframe)
-        conn.commit()
 
 
 def _quoted(name: str) -> str:
@@ -185,6 +110,9 @@ def _create_run_table(
 
     keys includes the snapshot's league/date and its team or team/player IDs.
     Non-key columns hold names and statistics and may contain missing values.
+    player_id is required for every new player row. Older database writes
+    omitted the DataFrame index containing that ID; migration archives those
+    rows when their IDs cannot be recovered from the stored data.
     """
     definitions = [
         f"{_quoted(column)} {column_type}" + (" NOT NULL" if column in keys else "")
@@ -229,9 +157,10 @@ def _ensure_run_table(
 ) -> None:
     """Create or migrate a run table, then add new statistics without committing.
 
+    An absent table is created with the required non-null primary key. An
+    existing table with that key only needs new statistic columns. Otherwise
+    it must be rebuilt: adding columns cannot repair its primary-key constraints.
     Migration archives the source and retains fully keyed, unambiguous history.
-    Identical copies collapse; conflicting values remain only in the archive.
-    The non-null primary key marks completion, so later saves only check schema.
     """
     keys = RUN_KEYS[table_name]
     table_info = conn.execute(f"PRAGMA table_info({_quoted(table_name)})").fetchall()
@@ -240,17 +169,21 @@ def _ensure_run_table(
             column: _column_type(dataframe[column]) for column in dataframe.columns
         }
         _create_run_table(conn, table_name, columns, keys)
-        return
-    if _has_run_key(table_info, keys):
+    elif _has_run_key(table_info, keys):
         _add_dataframe_columns(conn, table_name, dataframe)
-        return
-    _migrate_run_table(conn, table_name, dataframe)
+    else:
+        _migrate_run_table(conn, table_name, dataframe)
 
 
 def _migrate_run_table(
     conn: sqlite3.Connection, table_name: str, dataframe: pd.DataFrame
 ) -> None:
-    """Archive and rebuild a legacy table once, retaining unambiguous keyed rows."""
+    """Archive and rebuild a legacy table once, retaining unambiguous keyed rows.
+
+    DISTINCT collapses identical rows. GROUP BY keeps keys with exactly one
+    remaining version; conflicting versions stay in the archive. Historical
+    rows have no extraction timestamp, so this cannot select the latest version.
+    """
     keys = RUN_KEYS[table_name]
     _archive_legacy_rows(conn, table_name)
     _add_dataframe_columns(conn, table_name, dataframe)
@@ -335,7 +268,9 @@ def save_extraction_run(
 
     league_name and execution_date select the snapshot replaced in both run
     tables. Run keys distinguish its individual team and player rows; repeated
-    incoming keys keep the last row. player_stats carries player IDs in its index.
+    incoming keys keep the last row in DataFrame order. This is a deterministic
+    tie-breaker, not a comparison of extraction times. player_stats carries
+    required player IDs in its index; null IDs are rejected before any writes.
     """
     standings_for_run = standings.assign(league_name=league_name, date=execution_date)
     players_for_run = player_stats.assign(league_name=league_name, date=execution_date)
