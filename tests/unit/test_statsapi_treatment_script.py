@@ -5,7 +5,7 @@ import pandas as pd
 import pandas.api.types as pdtypes
 import pytest
 
-from mlb_airflow_data_pipeline.db_utils import create_connection, insert_dataframe
+from mlb_airflow_data_pipeline.db_utils import create_connection
 from mlb_airflow_data_pipeline.statsapi_feature_utils import (
     create_mean_normalization,
     create_plate_appearance_normalization,
@@ -137,7 +137,7 @@ def batter_input_paths(tmp_path: Path) -> TreatmentDataPaths:
     )
     database_path = tmp_path / "mlb_data.db"
     with create_connection(str(database_path)) as conn:
-        insert_dataframe(conn, "player_stats", player_stats)
+        player_stats.to_sql("player_stats", conn, index=False)
 
     return TreatmentDataPaths(
         database_path=str(database_path),

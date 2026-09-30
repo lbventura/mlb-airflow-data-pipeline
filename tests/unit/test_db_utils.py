@@ -8,11 +8,7 @@ import pytest
 
 from mlb_airflow_data_pipeline.db_utils import (
     create_connection,
-    create_table,
-    ensure_dataframe_columns,
-    insert_dataframe,
     read_player_stats,
-    read_table,
 )
 
 
@@ -32,29 +28,6 @@ def db_connection(temp_db_file: str) -> Iterator[sqlite3.Connection]:
         yield conn
 
 
-@pytest.fixture
-def sample_dataframe() -> pd.DataFrame:
-    """Create a sample DataFrame for testing."""
-    return pd.DataFrame({"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]})
-
-
-@pytest.fixture
-def empty_dataframe() -> pd.DataFrame:
-    """Create an empty DataFrame for testing."""
-    return pd.DataFrame({"id": [], "name": []})
-
-
-@pytest.fixture
-def test_table_sql() -> str:
-    """SQL for creating a test table."""
-    return """
-        CREATE TABLE test_table (
-            id INTEGER PRIMARY KEY,
-            name TEXT NOT NULL
-        );
-    """
-
-
 def test_create_connection_success(temp_db_file: str) -> None:
     """Test successful database connection creation."""
     with create_connection(temp_db_file) as conn:
@@ -66,152 +39,6 @@ def test_create_connection_invalid_path() -> None:
     with pytest.raises(sqlite3.Error, match="Failed to create database connection"):
         with create_connection("/invalid/path/to/database.db"):
             pass  # This code should not be reached
-
-
-def test_create_table_success(
-    db_connection: sqlite3.Connection, test_table_sql: str
-) -> None:
-    """Test successful table creation."""
-    create_table(db_connection, test_table_sql)
-
-    cursor = db_connection.cursor()
-    cursor.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='test_table'"
-    )
-    result = cursor.fetchone()
-
-    assert result is not None
-    assert result[0] == "test_table"
-
-
-def test_create_table_invalid_sql(db_connection: sqlite3.Connection) -> None:
-    """Test table creation with invalid SQL raises error."""
-    invalid_sql = "INVALID SQL STATEMENT"
-
-    with pytest.raises(sqlite3.Error, match="Failed to create table"):
-        create_table(db_connection, invalid_sql)
-
-
-def test_insert_dataframe_success(
-    db_connection: sqlite3.Connection, sample_dataframe: pd.DataFrame
-) -> None:
-    """Test successful DataFrame insertion."""
-    insert_dataframe(db_connection, "test_table", sample_dataframe)
-
-    cursor = db_connection.cursor()
-    cursor.execute("SELECT * FROM test_table")
-    results = cursor.fetchall()
-
-    assert len(results) == 3
-    assert results[0] == (1, "Alice")
-    assert results[1] == (2, "Bob")
-    assert results[2] == (3, "Charlie")
-
-
-def test_insert_dataframe_append_not_replace(
-    db_connection: sqlite3.Connection, test_table_sql: str
-) -> None:
-    """Test DataFrame insertion with append functionality."""
-    create_table(db_connection, test_table_sql)
-    original_df = pd.DataFrame({"id": [1, 2], "name": ["Alice", "Bob"]})
-    new_df = pd.DataFrame({"id": [3, 4], "name": ["Charlie", "David"]})
-
-    insert_dataframe(db_connection, "test_table", original_df)
-    insert_dataframe(db_connection, "test_table", new_df, mode="append")
-
-    cursor = db_connection.cursor()
-    cursor.execute("SELECT COUNT(*) FROM test_table")
-    count = cursor.fetchone()[0]
-
-    assert count == 4
-
-
-def test_insert_dataframe_empty_dataframe(
-    db_connection: sqlite3.Connection, empty_dataframe: pd.DataFrame
-) -> None:
-    """Test insertion of empty DataFrame."""
-    insert_dataframe(db_connection, "empty_table", empty_dataframe)
-
-    cursor = db_connection.cursor()
-    cursor.execute("SELECT COUNT(*) FROM empty_table")
-    count = cursor.fetchone()[0]
-
-    assert count == 0
-
-
-def test_read_table_success(
-    db_connection: sqlite3.Connection, sample_dataframe: pd.DataFrame
-) -> None:
-    """Test successful table reading."""
-    insert_dataframe(db_connection, "test_table", sample_dataframe)
-    result_df = read_table(db_connection, "test_table")
-
-    assert len(result_df) == 3
-    assert list(result_df.columns) == ["id", "name"]
-    assert result_df["id"].tolist() == [1, 2, 3]
-    assert result_df["name"].tolist() == ["Alice", "Bob", "Charlie"]
-
-
-def test_read_table_nonexistent_table(db_connection: sqlite3.Connection) -> None:
-    """Test reading nonexistent table raises error."""
-    with pytest.raises(Exception, match="Failed to read table nonexistent_table"):
-        read_table(db_connection, "nonexistent_table")
-
-
-def test_read_table_empty_table(
-    db_connection: sqlite3.Connection, empty_dataframe: pd.DataFrame
-) -> None:
-    """Test reading empty table returns empty DataFrame."""
-    insert_dataframe(db_connection, "empty_table", empty_dataframe)
-    result_df = read_table(db_connection, "empty_table")
-
-    assert len(result_df) == 0
-    assert list(result_df.columns) == ["id", "name"]
-
-
-def test_ensure_dataframe_columns_preserves_existing_rows(
-    db_connection: sqlite3.Connection,
-) -> None:
-    insert_dataframe(
-        db_connection,
-        "league_standings",
-        pd.DataFrame({"name": ["Existing team"]}),
-    )
-    current_standings = pd.DataFrame({"name": ["New team"], "date": ["2026-09-25"]})
-
-    ensure_dataframe_columns(db_connection, "league_standings", current_standings)
-    insert_dataframe(db_connection, "league_standings", current_standings)
-
-    result = read_table(db_connection, "league_standings")
-    assert result["name"].tolist() == ["Existing team", "New team"]
-    assert pd.isna(result.loc[0, "date"])
-    assert result.loc[1, "date"] == "2026-09-25"
-
-
-def test_ensure_dataframe_columns_adds_player_stats_fields(
-    db_connection: sqlite3.Connection,
-) -> None:
-    insert_dataframe(
-        db_connection,
-        "player_stats",
-        pd.DataFrame({"playername": ["Existing player"]}),
-    )
-    current_players = pd.DataFrame(
-        {
-            "playername": ["New player"],
-            "age": ["27"],
-            "caughtStealingPercentage": [".500"],
-            "date": ["2026-09-25"],
-            "league_name": ["american_league"],
-        }
-    )
-
-    ensure_dataframe_columns(db_connection, "player_stats", current_players)
-    insert_dataframe(db_connection, "player_stats", current_players)
-
-    result = read_table(db_connection, "player_stats")
-    assert result["playername"].tolist() == ["Existing player", "New player"]
-    assert result.loc[1, "league_name"] == "american_league"
 
 
 def test_read_player_stats_scopes_to_one_league_run(
@@ -228,7 +55,7 @@ def test_read_player_stats_scopes_to_one_league_run(
             "date": ["2026-01-01", "2026-01-01", "2025-12-31"],
         }
     )
-    insert_dataframe(db_connection, "player_stats", player_stats)
+    player_stats.to_sql("player_stats", db_connection, index=False)
 
     result = read_player_stats(db_connection, "american_league", "2026-01-01")
 
