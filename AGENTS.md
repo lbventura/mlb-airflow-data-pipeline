@@ -21,6 +21,7 @@ Keep code in the layer that owns its behavior. Avoid duplicating pipeline logic 
 
 ## Code changes
 
+- Create a clear and concise markdown implementation plan with your proposed changes in @implementation-plans under the name `<date>-<issue, if any>-<description>-implementation_plan.md`, including verification steps. Reference any relevant issues or previous PRs.
 - Follow the surrounding code's naming, formatting, and dependency patterns. Use type hints for public functions and meaningful return values.
 - Keep functions focused; use names that explain domain intent. Add comments only when they explain a non-obvious reason or constraint.
 - Handle expected failure cases at the boundary that can respond usefully. Let unexpected errors retain their original traceback; do not catch broad exceptions just to log and continue.

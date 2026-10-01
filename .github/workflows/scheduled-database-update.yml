@@ -2,7 +2,7 @@ name: Scheduled Database Update
 
 on:
   schedule:
-    - cron: '0 10 * * *'
+    - cron: '25 10 * * *'
   workflow_dispatch:
 
 permissions:
@@ -53,8 +53,11 @@ jobs:
             echo "pr_number=$(jq .number <<< "$pr")" >> "$GITHUB_OUTPUT"
           elif [[ "$pr" != null ]]; then
             if [[ "$(jq -r '.merged_at' <<< "$pr")" == null ]]; then
-              echo '::error::The collection PR was closed without merging. Reopen it to preserve its data.'
-              exit 1
+              if [[ -n "$branch_sha" ]]; then
+                echo '::error::The collection PR was closed without merging, but its branch still contains data. Reopen the PR or resolve the branch before rerunning.'
+                exit 1
+              fi
+              echo '::warning::The collection PR was closed without merging and its branch was deleted. Starting a new collection from main.'
             fi
             # Recover a new cycle whose push succeeded but PR creation failed.
             if [[ -n "$branch_sha" ]]; then
