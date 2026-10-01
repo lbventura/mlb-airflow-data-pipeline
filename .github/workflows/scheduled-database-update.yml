@@ -1,0 +1,191 @@
+name: Scheduled Database Update
+
+on:
+  schedule:
+    - cron: '0 10 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: scheduled-database-update
+  cancel-in-progress: false
+
+jobs:
+  update:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: bash
+    env:
+      TZ: UTC
+      COLLECTION_BRANCH: maintenance/scheduled-database-update
+      PR_TITLE: Scheduled Database Update
+      DATABASE: mlb_airflow_data_pipeline/db_data/mlb_data.db
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Select the collection branch
+        id: collection
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "MLB_AIRFLOW_DATA_DIR=$RUNNER_TEMP/database-update" >> "$GITHUB_ENV"
+          pr=$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=all&head=$GITHUB_REPOSITORY_OWNER:$COLLECTION_BRANCH&sort=created&direction=desc&per_page=1" | jq '.[0]')
+          git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
+          branch_sha=$(git rev-parse --verify "refs/remotes/origin/$COLLECTION_BRANCH" 2>/dev/null || true)
+
+          if [[ "$(jq -r '.state' <<< "$pr")" == open ]]; then
+            jq -e --arg title "$PR_TITLE" --arg sha "$branch_sha" --arg repo "$GITHUB_REPOSITORY" '
+              .title == $title and .base.ref == "main" and .head.sha == $sha and .head.repo.full_name == $repo
+            ' <<< "$pr" > /dev/null || {
+              echo '::error::The collection PR has an unexpected title, base, or head. Inspect it before rerunning.'
+              exit 1
+            }
+            echo "pr_number=$(jq .number <<< "$pr")" >> "$GITHUB_OUTPUT"
+          elif [[ "$pr" != null ]]; then
+            if [[ "$(jq -r '.merged_at' <<< "$pr")" == null ]]; then
+              echo '::error::The collection PR was closed without merging. Reopen it to preserve its data.'
+              exit 1
+            fi
+            # Recover a new cycle whose push succeeded but PR creation failed.
+            if [[ -n "$branch_sha" ]]; then
+              [[ "$branch_sha" != "$(jq -r '.head.sha' <<< "$pr")" ]] &&
+                git merge-base --is-ancestor "$(jq -r '.merge_commit_sha' <<< "$pr")" "$branch_sha" || {
+                  echo '::error::The merged PR branch still exists. Inspect it for unmerged data before deleting it and rerunning.'
+                  exit 1
+                }
+            fi
+          fi
+
+          if [[ -n "$branch_sha" ]]; then
+            git checkout -b "$COLLECTION_BRANCH" "origin/$COLLECTION_BRANCH"
+            if [[ -n "$(git diff --name-only origin/main...HEAD -- . ":(exclude)$DATABASE")" ]]; then
+              echo '::error::The collection branch contains changes other than the database.'
+              exit 1
+            fi
+          else
+            git checkout -b "$COLLECTION_BRANCH" origin/main
+          fi
+          echo "branch_sha=$branch_sha" >> "$GITHUB_OUTPUT"
+
+      - uses: mamba-org/setup-micromamba@v2
+        with:
+          environment-name: mlb-airflow-env
+          create-args: >-
+            python=3.14.7
+            apache-airflow
+            google-re2
+          init-shell: bash
+
+      - name: Install the project
+        run: micromamba run -n mlb-airflow-env python -m pip install -e .
+
+      - name: Extract both leagues
+        run: |
+          set -euo pipefail
+          mkdir -p "$MLB_AIRFLOW_DATA_DIR"
+          cp "$DATABASE" "$MLB_AIRFLOW_DATA_DIR/mlb_data.db"
+          extraction_date=$(date -u +%F)
+          for league in national_league american_league; do
+            printf '%s\n' "$league" > league_name_choice.txt
+            bash bash/statsapi_extraction_bash.sh
+          done
+          if [[ "$(date -u +%F)" != "$extraction_date" ]]; then
+            echo '::error::Extraction crossed UTC midnight; rerun for a consistent snapshot date.'
+            exit 1
+          fi
+          echo "EXTRACTION_DATE=$extraction_date" >> "$GITHUB_ENV"
+
+      - name: Validate database snapshots
+        run: |
+          micromamba run -n mlb-airflow-env python - <<'PY'
+          import os
+          import sqlite3
+          from pathlib import Path
+
+          from mlb_airflow_data_pipeline.db_utils import RUN_KEYS
+
+          database = Path(os.environ['MLB_AIRFLOW_DATA_DIR']) / 'mlb_data.db'
+          with sqlite3.connect(f'{database.as_uri()}?mode=ro', uri=True) as conn:
+              if conn.execute('PRAGMA integrity_check').fetchall() != [('ok',)]:
+                  raise RuntimeError('Database integrity check failed')
+              for table, keys in RUN_KEYS.items():
+                  columns = ', '.join(keys)
+                  if conn.execute(
+                      f'SELECT 1 FROM {table} GROUP BY {columns} HAVING COUNT(*) > 1 LIMIT 1'
+                  ).fetchone():
+                      raise RuntimeError(f'Duplicate snapshot keys in {table}')
+                  for league in ('national_league', 'american_league'):
+                      count = conn.execute(
+                          f'SELECT COUNT(*) FROM {table} WHERE league_name = ? AND date = ?',
+                          (league, os.environ['EXTRACTION_DATE']),
+                      ).fetchone()[0]
+                      if not count:
+                          raise RuntimeError(f'Missing {league} snapshot in {table}')
+                      print(f'{table}: {league}: {count} rows')
+          PY
+
+      - name: Create or update the database PR
+        id: publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ steps.collection.outputs.pr_number }}
+          BRANCH_SHA: ${{ steps.collection.outputs.branch_sha }}
+        run: |
+          if [[ -n "$PR_NUMBER" ]]; then
+            gh api "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER" |
+              jq -e --arg sha "$BRANCH_SHA" '.state == "open" and .head.sha == $sha and .base.ref == "main"' > /dev/null || {
+                echo '::error::The PR changed or closed during extraction; rerun.'
+                exit 1
+              }
+          fi
+          remote_sha=$(git ls-remote --heads origin "refs/heads/$COLLECTION_BRANCH" | cut -f1)
+          if [[ "$remote_sha" != "$BRANCH_SHA" ]]; then
+            echo '::error::The remote collection branch changed or disappeared; rerun.'
+            exit 1
+          fi
+
+          git diff --exit-code HEAD
+          cp "$MLB_AIRFLOW_DATA_DIR/mlb_data.db" "$DATABASE"
+          git add -- "$DATABASE"
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' \
+              -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m "Update database for $EXTRACTION_DATE"
+            git push origin "HEAD:refs/heads/$COLLECTION_BRANCH"
+          elif [[ -z "$BRANCH_SHA" ]]; then
+            echo 'No database change; no PR needed.' >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          if [[ -z "$PR_NUMBER" ]]; then
+            printf '%s\n' 'Collects daily American and National League database snapshots for #132.' \
+              > "$RUNNER_TEMP/database-pr-body.md"
+            gh pr create --base main --head "$COLLECTION_BRANCH" \
+              --title "$PR_TITLE" --body-file "$RUNNER_TEMP/database-pr-body.md"
+          fi
+          pr=$(gh pr view "${PR_NUMBER:-$COLLECTION_BRANCH}" --json state,headRefOid,url)
+          jq -e --arg sha "$(git rev-parse HEAD)" '.state == "OPEN" and .headRefOid == $sha' \
+            <<< "$pr" > /dev/null || {
+              echo '::error::PR state changed while publishing. Preserve the branch and recover its unmerged database commit.'
+              exit 1
+            }
+          printf 'Database snapshots for %s: %s\n' "$EXTRACTION_DATE" "$(jq -r .url <<< "$pr")" \
+            >> "$GITHUB_STEP_SUMMARY"
+          echo 'published=true' >> "$GITHUB_OUTPUT"
+
+      - name: Run CI on the database PR
+        if: steps.publish.outputs.published == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # GITHUB_TOKEN pushes do not trigger push workflows.
+        run: gh workflow run test-pr-github-actions.yml --ref "$COLLECTION_BRANCH"
