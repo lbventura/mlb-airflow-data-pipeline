@@ -1,4 +1,4 @@
-"""Manual measurements of the unchanged extractor, without Airflow."""
+"""Manual measurements of the serial extractor, without Airflow."""
 
 import os
 from pathlib import Path

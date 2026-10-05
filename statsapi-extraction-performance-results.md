@@ -1,8 +1,12 @@
-# StatsAPI extraction: Phase 1 performance results
+# StatsAPI extraction performance results
 
 Related: [issue #61](https://github.com/lbventura/mlb-airflow-data-pipeline/issues/61) and [implementation plan](statsapi-extraction-runtime-implementation-plan.md).
 
-**Phase 1 is complete; the correctness-qualified baseline is inconclusive.** One diagnostic and all three declared unprofiled attempts completed extraction, but every attempt failed identity validation. Unprofiled elapsed time had a descriptive median of **974.738 seconds (16m 14.7s)**. Repeated name lookups consumed **551.796–555.861 seconds** per attempt and are the first candidate to remove. No optimization has been implemented.
+**Observed American League runtime improvement:** whole extraction fell from a Phase 1 median of **974.738 seconds (16m 14.7s)** to **396.204 seconds (6m 36.2s)** with the Phase 2 changes. That is **578.534 seconds (9m 38.5s) saved, a 59.4% reduction (2.46× speedup)**. This compares three historical baseline attempts with one later candidate attempt; the baseline attempts failed player-ID validation, while the candidate passed. Treat the timing as an observed difference, not a matched or correctness-qualified speedup.
+
+**Data caveat:** the table schemas are unchanged, but the candidate American League output has **145 more null statistic cells**. These occur only in six rows whose incorrect player IDs were replaced with roster IDs; no shared player membership gained a null. The corrected rows need an explicit stat-value decision before claiming output equivalence.
+
+**Phase 1 baseline:** one diagnostic and three unprofiled attempts completed extraction, but every attempt failed identity validation. Repeated name lookups consumed **551.796–555.861 seconds** per attempt. No optimization had been implemented at the end of Phase 1.
 
 ## Scope and provenance
 
@@ -188,3 +192,26 @@ The post-run audit verified request completion counts, source snapshot hashes, s
 | Stop before optimization | No roster refactor, standings reuse, worker pool, season correction, or transport change implemented |
 
 The Phase 1 investigation is complete. Its baseline conclusion is **inconclusive for correctness-qualified performance**, as allowed by the plan when attempts fail. National League live validation belongs to validation of a selected solution in later phases; only its manual cases were collected here. No further live attempts or optimization work are part of this deliverable.
+
+## Phase 2 progress (2026-09-26)
+
+The first candidate carries `person.id` and `person.fullName` from each raw `team_roster` response into `TeamStats`. It no longer calls `lookup_player` or parses formatted roster lines. Player stats and inactive-player records are keyed by ID, preserving different players with the same name. A repeated ID in one raw roster raises a setup error with team context instead of disappearing in a dictionary. The player-stats request still uses the existing `type` argument without a season argument; changing its season is a separate correctness decision. A second small change reuses one standings response for all three divisions. No worker pool or Airflow test is involved.
+
+The fixed-response tests cover ordinary and multipart names, suffixes, duplicate names with distinct IDs, the absence of the formatted roster's blank trailing line, inactive players, malformed and repeated roster entries, team failures, exact DataFrame rows/columns/dtypes, and one standings call yielding 15 teams. All **49 offline unit tests** and all **13 affected extraction integration tests** pass. The pre-commit mypy hook now targets Python 3.14, matching `pyproject.toml`; its previous default produced syntax/version errors even in unchanged modules. Ruff, formatting, and mypy checks pass on the changed Python files.
+
+The first direct, unprofiled American League candidate run succeeded in **396.204 seconds** overall and **388.612 seconds** in player extraction. It loaded 796 roster entries, persisted 796 rows, had no inactive or failed teams, and passed exact roster membership and database-value validation. Its request counts were **1 standings, 15 team_roster, 0 sports_players, 796 person**. The run artifact is `logs/extraction-profiles/american_league-benchmark-workers1-20260926T073640Z-2f2ed6e3/`.
+
+| American League measurement | Phase 1 median (3 runs) | Phase 2 candidate (1 run) | Observed time saved | Observed reduction |
+| --- | ---: | ---: | ---: | ---: |
+| Whole extraction | 974.738 s (16m 14.7s) | 396.204 s (6m 36.2s) | **578.534 s (9m 38.5s)** | **59.4% (2.46× speedup)** |
+| Player extraction stage | 966.214 s (16m 6.2s) | 388.612 s (6m 28.6s) | **577.602 s (9m 37.6s)** | **59.8% (2.49× speedup)** |
+
+These figures include both the roster-ID change and standings-response reuse. The experiments were not paired or run on the same source revision, and the Phase 1 outputs had incorrect player identities. They show the size of the observed runtime change, but cannot establish how much each change contributed or a correctness-qualified speedup.
+
+Against the September 25 Phase 1 snapshot, the candidate replaces six wrong `(team_id, player_id)` memberships with the six roster IDs and restores 13 shortened full names among the 790 shared memberships. Both snapshots have 796 rows, the same columns and column dtypes, and no duplicate memberships. They differ in 3,294 stat cells across 73 fields; `phase2-versus-phase1.json` in the candidate artifact records counts for each field and all changed identities and names. Those runs occurred on different dates, and `player_stats` requests the current/default season, so their stat values are not an exact equivalence reference. The prior runs failed identity validation and predate the rebase on merged PR #126.
+
+**Schema and null audit:** the saved SQLite `league_standings` tables have identical 13-column definitions; the saved `player_stats` tables have identical 85-column definitions, including column order, SQL types, and nullability flags. The player DataFrames likewise have identical column order and dtypes. Null cells in `player_stats` increased from **37,436 to 37,581**, a net **145**. Across the 790 shared `(team_id, player_id)` memberships, no previously populated field became null and no null field became populated. The six removed wrong-ID rows contained 341 null statistic cells; the six corrected-ID rows contain 486 (all 81 statistic fields in each row). `playername`, `team_id`, `date`, and `league_name` have no nulls in either run. The raw `player_stats` response bodies were not retained, so these snapshots do not establish why those six corrected players have no parsed stat values. The current/default-season request and different collection dates limit attribution. No corresponding historical National League output was measured for a before/after null comparison.
+
+The direct, unprofiled National League candidate run also succeeded: **402.697 seconds** overall, **395.086 seconds** in player extraction, 812 roster entries and persisted rows, no inactive or failed teams, and passed roster membership and database-value validation. Its request counts were **1 standings, 15 team_roster, 0 sports_players, 812 person**. The artifact is `logs/extraction-profiles/national_league-benchmark-workers1-20260926T074345Z-6cb4f990/`. Both runs completed with source hashes unchanged during measurement; neither ran alongside another extraction.
+
+Matched serial comparisons on the current source, an exact frozen-response comparison with the historical extractor, and separate measurement of the standings change remain open. No numerical acceptance target or worker count has been selected.

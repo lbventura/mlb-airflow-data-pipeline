@@ -83,7 +83,7 @@ def sample_extraction(monkeypatch: pytest.MonkeyPatch) -> None:
     def setup(self: extraction.DataExtractor) -> None:
         extraction.statsapi.get("team_roster", {"teamId": 147, "season": 2023})
         self.league_standings = pd.DataFrame({"team_id": [147], "name": ["Yankees"]})
-        self.league_team_rosters_player_names = {147: ["Sample Player"]}
+        self.league_team_roster_players = {147: {123: "Sample Player"}}
 
     def team(self: extraction.DataExtractor, team_id: int) -> tuple[pd.DataFrame, dict]:
         extraction.statsapi.get("person", {"personId": 123})
@@ -101,7 +101,7 @@ def sample_extraction(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(extraction.statsapi, "get", api)
     monkeypatch.setattr(
-        extraction.DataExtractor, "set_league_team_rosters_player_names", setup
+        extraction.DataExtractor, "set_league_team_roster_players", setup
     )
     monkeypatch.setattr(
         extraction.DataExtractor, "get_player_stats_dataframe_per_team", team

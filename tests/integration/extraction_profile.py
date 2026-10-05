@@ -330,7 +330,7 @@ def run_extraction(
             recorder.context.team_id = None
         team["rows"] = len(frame)
         team["player_ids"] = [int(value) for value in frame.index]
-        team["inactive_players"] = {name: int(pid) for name, pid in inactive.items()}
+        team["inactive_players"] = {str(pid): name for pid, name in inactive.items()}
         recorder.frames[int(team_id)] = frame
         recorder.checkpoint(summary)
         return frame, inactive
@@ -351,14 +351,14 @@ def run_extraction(
                         extractor, "get_player_stats_dataframe_per_team", measured_team
                     )
                     with stage("standings_and_rosters", summary, recorder):
-                        extractor.set_league_team_rosters_player_names()
+                        extractor.set_league_team_roster_players()
                     standings = extractor.league_standings
                     summary["requested_team_ids"] = [
                         int(value) for value in standings["team_id"]
                     ]
-                    summary["input_name_counts"] = {
-                        str(team): len(names)
-                        for team, names in extractor.league_team_rosters_player_names.items()
+                    summary["roster_player_counts"] = {
+                        str(team): len(players)
+                        for team, players in extractor.league_team_roster_players.items()
                     }
                     with stage("standings_write", summary, recorder):
                         ensure_dataframe_columns(conn, "league_standings", standings)
@@ -371,7 +371,7 @@ def run_extraction(
                         )
                     summary["failed_teams"] = failed
                     summary["inactive_players"] = {
-                        str(team): {name: int(pid) for name, pid in members.items()}
+                        str(team): {str(pid): name for pid, name in members.items()}
                         for team, members in inactive.items()
                     }
                     with stage("player_write", summary, recorder):
@@ -407,7 +407,9 @@ def run_extraction(
             observed = Counter(
                 int(pid) for pid in players.index[players["team_id"] == int(team)]
             )
-            inactive_ids = Counter(summary["inactive_players"].get(team, {}).values())
+            inactive_ids = Counter(
+                int(pid) for pid in summary["inactive_players"].get(team, {})
+            )
             missing = expected - observed - inactive_ids
             unexpected = observed + inactive_ids - expected
             if missing or unexpected:
@@ -421,6 +423,13 @@ def run_extraction(
         assert not differences, (
             f"Unexplained roster identity differences: {differences}"
         )
+        endpoint_counts = recorder.endpoints()
+        assert endpoint_counts.get("sports_players", {}).get("count", 0) == 0
+        assert endpoint_counts.get("team_roster", {}).get("count", 0) == len(
+            summary["requested_team_ids"]
+        )
+        if data_source == "live":
+            assert endpoint_counts.get("standings", {}).get("count", 0) == 1
         assert source_hashes() == summary["source_hashes"], (
             "Source changed during attempt"
         )
