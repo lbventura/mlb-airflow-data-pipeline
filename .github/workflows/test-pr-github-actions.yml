@@ -1,4 +1,5 @@
 name: test-pr-actions
+run-name: CI for ${{ github.sha }}
 on:
   push:
   workflow_dispatch:

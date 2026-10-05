@@ -169,6 +169,8 @@ jobs:
             echo 'No database change; no PR needed.' >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
+          # A pushed commit needs CI even if the following PR checks fail.
+          echo "ci_ref=$COLLECTION_BRANCH" >> "$GITHUB_OUTPUT"
 
           if [[ -z "$PR_NUMBER" ]]; then
             printf '%s\n' 'Collects daily American and National League database snapshots for #132.' \
@@ -184,11 +186,11 @@ jobs:
             }
           printf 'Database snapshots for %s: %s\n' "$EXTRACTION_DATE" "$(jq -r .url <<< "$pr")" \
             >> "$GITHUB_STEP_SUMMARY"
-          echo 'published=true' >> "$GITHUB_OUTPUT"
 
       - name: Run CI on the database PR
-        if: steps.publish.outputs.published == 'true'
+        if: ${{ always() && steps.publish.outputs.ci_ref != '' }}
         env:
           GH_TOKEN: ${{ github.token }}
+          CI_REF: ${{ steps.publish.outputs.ci_ref }}
         # GITHUB_TOKEN pushes do not trigger push workflows.
-        run: gh workflow run test-pr-github-actions.yml --ref "$COLLECTION_BRANCH"
+        run: gh workflow run test-pr-github-actions.yml --ref "$CI_REF"
