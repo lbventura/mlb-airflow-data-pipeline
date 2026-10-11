@@ -17,6 +17,7 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     PITCHING_STATS,
     SEASON_YEAR,
 )
+from mlb_airflow_data_pipeline.statsapi_treatment_script import treat_player_stats
 
 
 def _player_stats_response(player_id: int) -> dict:
@@ -26,20 +27,43 @@ def _player_stats_response(player_id: int) -> dict:
         {
             "group": "hitting",
             "stats": {
-                stat: player_id if stat == "hits" else 0 for stat in BATTING_STATS
+                **dict.fromkeys(BATTING_STATS, 0),
+                "hits": player_id,
+                "atBats": 1000,
+                "plateAppearances": 1100,
             },
         }
     ]
     if player_id == 101:
         sections.extend(
             [
-                {"group": "pitching", "stats": dict.fromkeys(PITCHING_STATS, 0)},
+                {
+                    "group": "pitching",
+                    "stats": {
+                        **dict.fromkeys(PITCHING_STATS, 0),
+                        "gamesPlayed": 5,
+                        "inningsPitched": "20.0",
+                        "outs": 60,
+                    },
+                },
                 {
                     "group": "fielding",
                     "stats": {"position": {"abbreviation": "C"}, "gamesPlayed": 0},
                 },
             ]
         )
+    if player_id == 505:
+        sections = [
+            {
+                "group": "pitching",
+                "stats": {
+                    **dict.fromkeys(PITCHING_STATS, 0),
+                    "gamesPlayed": 5,
+                    "inningsPitched": "30.0",
+                    "outs": 90,
+                },
+            }
+        ]
     return {
         "people": [
             {
@@ -116,7 +140,7 @@ def test_collision_survives_database_write_with_one_stats_call(
 
 @pytest.fixture
 def league_api(monkeypatch: pytest.MonkeyPatch) -> tuple[Mock, Mock, Mock, Mock]:
-    """StatsAPI responses for three teams, including one inactive player."""
+    """Three teams, with interleaved hitter/pitcher groups and an inactive player."""
     standings_data = Mock(
         return_value={
             200: {"teams": [{"team_id": 147, "name": "Yankees"}]},
@@ -128,6 +152,8 @@ def league_api(monkeypatch: pytest.MonkeyPatch) -> tuple[Mock, Mock, Mock, Mock]
         147: [
             {"person": {"id": 101, "fullName": "Player One"}},
             {"person": {"id": 202, "fullName": "Player Two"}},
+            {"person": {"id": 505, "fullName": "Player Five"}},
+            {"person": {"id": 606, "fullName": "Player Six"}},
         ],
         111: [{"person": {"id": 303, "fullName": "Player Three"}}],
         133: [{"person": {"id": 404, "fullName": "Player Four"}}],
@@ -160,17 +186,20 @@ def test_roster_player_stats_reach_database(
 
     with sqlite3.connect(database_path) as conn:
         rows = conn.execute(
-            """SELECT playername, team_id, hitting_hits, date, league_name
-               FROM player_stats ORDER BY team_id"""
+            """SELECT player_id, playername, team_id, hitting_hits, pitching_outs,
+                      date, league_name
+               FROM player_stats ORDER BY team_id, player_id"""
         ).fetchall()
         standings_count = conn.execute(
             "SELECT COUNT(*) FROM league_standings"
         ).fetchone()[0]
 
     assert rows == [
-        ("Player Three", 111, "303", execution_date, "american_league"),
-        ("Player Four", 133, "404", execution_date, "american_league"),
-        ("Player One", 147, "101", execution_date, "american_league"),
+        (303, "Player Three", 111, "303", None, execution_date, "american_league"),
+        (404, "Player Four", 133, "404", None, execution_date, "american_league"),
+        (101, "Player One", 147, "101", "60", execution_date, "american_league"),
+        (505, "Player Five", 147, None, "90", execution_date, "american_league"),
+        (606, "Player Six", 147, "606", None, execution_date, "american_league"),
     ]
     assert standings_count == 3
     standings_data.assert_called_once_with(103, season=SEASON_YEAR)
@@ -186,9 +215,31 @@ def test_roster_player_stats_reach_database(
         for team_id in (147, 111, 133)
     ]
     assert player_stats.call_args_list == [
-        call(player_id) for player_id in (101, 202, 303, 404)
+        call(player_id) for player_id in (101, 202, 505, 606, 303, 404)
     ]
     lookup_player.assert_not_called()
+
+    treat_player_stats(
+        str(database_path), "american_league", execution_date, str(tmp_path)
+    )
+    outputs = {
+        role: pd.read_csv(
+            tmp_path / f"american_league_{execution_date}_{role}_stats_df.csv",
+            index_col=0,
+        ).set_index("playername")
+        for role in ("batter", "pitcher", "defender")
+    }
+    assert outputs["batter"]["hits"].to_dict() == {
+        "Player One": 101,
+        "Player Three": 303,
+        "Player Four": 404,
+        "Player Six": 606,
+    }
+    assert outputs["pitcher"]["outs"].to_dict() == {
+        "Player One": 60,
+        "Player Five": 90,
+    }
+    assert outputs["defender"]["position"].to_dict() == {"Player One": "C"}
 
 
 @pytest.mark.parametrize("error_type", [ConnectionError, TypeError])

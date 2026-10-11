@@ -212,7 +212,7 @@ class DataExtractor:
             active_players,
             inactive_player_info,
         ) = player_information_per_team.get_team_stats()
-        team_player_stats["playername"] = list(active_players.values())
+        team_player_stats["playername"] = pd.Series(active_players)
         team_player_stats["team_id"] = team_number
 
         return (

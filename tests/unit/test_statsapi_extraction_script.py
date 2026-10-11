@@ -1,3 +1,4 @@
+from itertools import permutations
 from unittest.mock import Mock
 
 import pandas as pd
@@ -27,6 +28,48 @@ def test__insert_col_in_first_position() -> None:
     _insert_col_in_first_position(test_df, column_name=first_column)
     assert test_df.columns[0] == first_column
     assert test_df[first_column].to_list() == col_2_data
+
+
+@pytest.mark.parametrize("player_order", list(permutations((101, 202, 303))))
+def test_mixed_roster_preserves_player_names_and_stats(
+    monkeypatch: pytest.MonkeyPatch, player_order: tuple[int, ...]
+) -> None:
+    players = {101: "Hitter A", 202: "Pitcher B", 303: "Hitter C"}
+    responses: dict[int, dict] = {}
+    for player_id in players:
+        group = "pitching" if player_id == 202 else "hitting"
+        stat_names = PITCHING_STATS if group == "pitching" else BATTING_STATS
+        responses[player_id] = {
+            "people": [
+                {
+                    "stats": [
+                        {
+                            "group": {"displayName": group},
+                            "splits": [{"stat": dict.fromkeys(stat_names, player_id)}],
+                        }
+                    ]
+                }
+            ]
+        }
+    responses[404] = {"people": [{"id": 404}]}
+    monkeypatch.setattr(
+        statsapi,
+        "get",
+        Mock(side_effect=lambda endpoint, params: responses[params["personId"]]),
+    )
+    roster = {player_id: players[player_id] for player_id in player_order}
+    roster[404] = "Inactive"
+    extractor = extraction_script.DataExtractor()
+    extractor.league_team_roster_players = {147: roster}
+
+    rows, inactive = extractor.get_player_stats_dataframe_per_team(147)
+
+    assert inactive == {404: "Inactive"}
+    assert rows["playername"].to_dict() == players
+    assert rows.loc[101, "hitting_hits"] == "101"
+    assert rows.loc[303, "hitting_hits"] == "303"
+    assert rows.loc[202, "pitching_outs"] == "202"
+    assert rows["team_id"].eq(147).all()
 
 
 @pytest.mark.parametrize("reverse_sections", [False, True])
