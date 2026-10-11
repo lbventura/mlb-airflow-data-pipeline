@@ -21,11 +21,16 @@ from mlb_airflow_data_pipeline.statsapi_feature_utils import (
 )
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     BATTING_STATS,
+    BATTING_SOURCE_STATS,
     DATA_FILE_LOCATION,
+    DEFENDER_POSITIONS,
     DEFENSIVE_STATS,
+    FIELDING_SOURCE_STATS,
     LEAGUE_NAME,
     PITCHING_STATS,
+    PITCHING_SOURCE_STATS,
     PLAYER_INFORMATION,
+    expected_output_columns,
 )
 
 from mlb_airflow_data_pipeline.logging_setup import get_logger
@@ -59,14 +64,20 @@ class DataTreaterInputRepresentation(BaseModel):
     subset_columns: list
     filter_conditions_dict: dict
     transformation_dict: dict
+    stats_group: str
 
 
 def _convert_numeric_columns(dataframe: pd.DataFrame) -> pd.DataFrame:
-    """Convert columns whose non-null values are all numeric."""
-    for column in dataframe.columns:
-        converted_column = pd.to_numeric(dataframe[column], errors="coerce")
-        if converted_column.notna().sum() == dataframe[column].notna().sum():
-            dataframe[column] = converted_column
+    """Convert known metrics, treating undefined API rates as missing values."""
+    numeric_columns = (
+        (set(expected_output_columns()) - {"playername", "date"})
+        | BATTING_SOURCE_STATS
+        | PITCHING_SOURCE_STATS
+        | FIELDING_SOURCE_STATS
+        | {"player_id"}
+    )
+    for column in dataframe.columns.intersection(numeric_columns):
+        dataframe[column] = pd.to_numeric(dataframe[column], errors="coerce")
     return dataframe
 
 
@@ -120,7 +131,23 @@ class DataTreater:
         return filtered_data
 
     def get_subset_data(self) -> pd.DataFrame:
-        intermediate_data = self.get_input_data()[self.input_parameters.subset_columns]
+        input_data = self.get_input_data()
+        columns = self.input_parameters.subset_columns
+        group = self.input_parameters.stats_group
+        grouped_columns = [
+            column
+            for column in input_data.columns
+            if column.startswith(("hitting_", "pitching_", "fielding_"))
+        ]
+        # Old snapshots share the table's new columns, but contain no grouped values.
+        has_grouped_stats = input_data[grouped_columns].notna().any(axis=None)
+        if has_grouped_stats or (input_data.empty and grouped_columns):
+            if group == "fielding":
+                intermediate_data = _fielding_subset(input_data, columns)
+            else:
+                intermediate_data = _grouped_subset(input_data, columns, group)
+        else:
+            intermediate_data = input_data[columns]
         logger.info(
             "subset_data_created",
             subset_columns=self.input_parameters.subset_columns,
@@ -146,6 +173,45 @@ class DataTreater:
         return input_data
 
 
+def _grouped_subset(
+    input_data: pd.DataFrame, columns: list[str], group: str
+) -> pd.DataFrame:
+    source_columns = [
+        name if name in PLAYER_INFORMATION else f"{group}_{name}" for name in columns
+    ]
+    if group.startswith("fielding_"):
+        # Position-specific metrics (for example catcherERA) are optional.
+        selected = input_data.reindex(columns=source_columns)
+        selected[PLAYER_INFORMATION] = input_data[PLAYER_INFORMATION]
+    elif not any(column.startswith(f"{group}_") for column in input_data.columns):
+        return pd.DataFrame(columns=columns, dtype=float)
+    else:
+        selected = input_data[source_columns].copy()
+    selected.columns = columns
+    return selected
+
+
+def _fielding_subset(input_data: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+    batting_columns = [
+        name for name in columns if name in {"atBats", "plateAppearances"}
+    ]
+    player_positions = []
+    for position in DEFENDER_POSITIONS:
+        group = f"fielding_{position}"
+        if f"{group}_gamesPlayed" not in input_data.columns:
+            continue
+        players = input_data[input_data[f"{group}_gamesPlayed"].notna()]
+        if players.empty:
+            continue
+        selected = _grouped_subset(players, columns, group)
+        selected[batting_columns] = _grouped_subset(players, batting_columns, "hitting")
+        selected["position"] = position
+        player_positions.append(selected)
+    if not player_positions:
+        return pd.DataFrame(columns=[*columns, "position"], dtype=float)
+    return pd.concat(player_positions, ignore_index=True)
+
+
 def filter_data(input_df: pd.DataFrame, conditions_dict: dict) -> pd.DataFrame:
     """Filter data from the input DataFrame as specified by the conditions.
     Raises a warning at runtime if the percentage of good data is below a certain threshold
@@ -157,6 +223,8 @@ def filter_data(input_df: pd.DataFrame, conditions_dict: dict) -> pd.DataFrame:
     Returns:
         pd.DataFrame
     """
+    if input_df.empty:
+        return input_df.copy()
     conditions = np.logical_and.reduce(
         [(input_df[key] >= value) for key, value in conditions_dict.items()]
     )
@@ -221,6 +289,7 @@ batter_input_data_repr = DataTreaterInputRepresentation(
     subset_columns=batting_stats_list,
     filter_conditions_dict=batter_filter_conditions_dict,
     transformation_dict=batter_transformation_dict,
+    stats_group="hitting",
 )
 
 # same thing for pitchers
@@ -248,6 +317,7 @@ pitcher_input_data_repr = DataTreaterInputRepresentation(
     subset_columns=pitching_stats_list,
     filter_conditions_dict=pitcher_filter_conditions_dict,
     transformation_dict=pitcher_transformation_dict,
+    stats_group="pitching",
 )
 
 # same thing for defenders
@@ -276,6 +346,7 @@ defender_input_data_repr = DataTreaterInputRepresentation(
     subset_columns=defending_stats_list,
     filter_conditions_dict=defender_filter_conditions_dict,
     transformation_dict=defender_transformation_dict,
+    stats_group="fielding",
 )
 
 

@@ -1,13 +1,17 @@
+from collections.abc import Iterable
 from datetime import datetime
 
 import pandas as pd
 import statsapi
 
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
+    BATTING_STATS,
+    FIELDING_POSITIONS,
     IS_SEASON_STATS,
     LEAGUE_DIVISION_MAPPING,
     LEAGUE_MAPPING,
     LEAGUE_NAME,
+    PITCHING_STATS,
     SEASON_YEAR,
     expected_output_columns,
 )
@@ -73,13 +77,46 @@ def _get_team_roster_players(team_id: int) -> dict[int, str]:
     return players
 
 
-def _generate_player_stats(player_stats_str: list[str]) -> dict:
-    player_stats = {
-        stat.split(": ")[0]: stat.split(": ")[1]
-        for stat in player_stats_str
-        if ":" in stat
-    }
+def _generate_player_stats(stat_sections: list[dict]) -> dict[str, str]:
+    """Keep player totals by group/position, excluding their per-team components."""
+    grouped_splits: dict[str, list[dict]] = {}
+    for section in stat_sections:
+        group = section["group"]["displayName"]
+        for split in section["splits"]:
+            prefix = group
+            if group == "fielding":
+                prefix = f"fielding_{split['stat']['position']['abbreviation']}"
+            grouped_splits.setdefault(prefix, []).append(split)
+
+    player_stats: dict[str, str] = {}
+    for prefix, splits in grouped_splits.items():
+        # Traded players have a combined split without a team, plus team splits.
+        totals = [split for split in splits if "team" not in split] or splits
+        if len(totals) != 1:
+            raise ValueError(f"Ambiguous player stats: {prefix} ({len(totals)} splits)")
+        player_stats.update(
+            (f"{prefix}_{name}", str(value))
+            for name, value in totals[0]["stat"].items()
+            if name != "position"
+        )
     return player_stats
+
+
+def _validate_player_stats_columns(columns: Iterable[str]) -> None:
+    """Validate one player's present groups before combining players' columns."""
+    actual = set(columns)
+    if unexpected := actual - set(expected_output_columns()):
+        raise ValueError(f"Unexpected player stats: {sorted(unexpected)}")
+    required_stats = {
+        "hitting": BATTING_STATS,
+        "pitching": PITCHING_STATS,
+        **{f"fielding_{position}": ["gamesPlayed"] for position in FIELDING_POSITIONS},
+    }
+    for group, stats in required_stats.items():
+        if any(column.startswith(f"{group}_") for column in actual):
+            missing = {f"{group}_{stat}" for stat in stats} - actual
+            if missing:
+                raise ValueError(f"Missing expected player stats: {sorted(missing)}")
 
 
 def _get_stats_type(is_season_stats: bool = IS_SEASON_STATS) -> str:
@@ -91,37 +128,37 @@ def _get_stats_type(is_season_stats: bool = IS_SEASON_STATS) -> str:
 
 
 class TeamStats:
-    def __init__(self, roster_players: dict[int, str]):
+    def __init__(self, roster_players: dict[int, str]) -> None:
         self.roster_players = roster_players
-        self.team_stats: dict[int, list[str]] = {}
 
     def get_team_stats(
         self,
     ) -> tuple[pd.DataFrame, dict[int, str], dict[int, str]]:
         active_players: dict[int, str] = {}
         inactive_players: dict[int, str] = {}
+        player_stats: dict[int, dict[str, str]] = {}
+        stats_type = _get_stats_type()
+        season = f",season={SEASON_YEAR}" if stats_type == "season" else ""
 
         for player_id, name in self.roster_players.items():
-            try:
-                self.team_stats[player_id] = statsapi.player_stats(
-                    player_id, type=_get_stats_type()
-                ).split("\n")
-                active_players[player_id] = name
-            except TypeError:
+            response = statsapi.get(
+                "person",
+                {
+                    "personId": player_id,
+                    "hydrate": f"stats(group=[hitting,pitching,fielding],type={stats_type}{season},sportId=1),currentTeam",
+                },
+            )
+            sections = response["people"][0].get("stats", [])
+            stats = _generate_player_stats(sections)
+            if not stats:
                 inactive_players[player_id] = name
+                continue
+            _validate_player_stats_columns(stats)
+            player_stats[player_id] = stats
+            active_players[player_id] = name
 
-        team_player_stats = self._get_team_player_stats()
-
+        team_player_stats = pd.DataFrame.from_dict(player_stats, orient="index")
         return team_player_stats, active_players, inactive_players
-
-    def _get_team_player_stats(self) -> pd.DataFrame:
-        team_player_stats = pd.DataFrame(
-            data={
-                player_id: _generate_player_stats(player_stats_str)
-                for player_id, player_stats_str in self.team_stats.items()
-            }
-        ).T
-        return team_player_stats
 
 
 class DataExtractor:
@@ -133,70 +170,38 @@ class DataExtractor:
 
     def get_player_stats_per_league(
         self,
-    ) -> tuple[pd.DataFrame, dict[int, dict[int, str]], list[str]]:
-        """
-        Returns player individual stats per league.
-
-        Returns:
-            pd.DataFrame: Containing stats for a given league
-            dict: Keys are team IDs and values are inactive players by ID
-            list: List of teams for which we failed to get stats
-        """
+    ) -> tuple[pd.DataFrame, dict[int, dict[int, str]]]:
+        """Collect league statistics, propagating failures before any writes."""
         league_player_team_stats = {}
         inactive_players_per_team = {}
-        failed_teams = []
 
         for team_number in self.league_team_roster_players:
-            try:
-                (
-                    team_player_stats,
-                    inactive_player_info,
-                ) = self.get_player_stats_dataframe_per_team(team_number)
-                league_player_team_stats[team_number] = team_player_stats
-                if inactive_player_info:
-                    inactive_players_per_team[team_number] = inactive_player_info
-                successful_team_name = self.team_id_name_mapping[team_number]
-                logger.info(
-                    "team_extraction_success",
-                    team_name=successful_team_name,
-                    team_number=team_number,
-                    players_count=len(team_player_stats),
-                )
-            except Exception as e:
-                failed_team_name = self.team_id_name_mapping[team_number]
-                failed_teams.append(failed_team_name)
-                logger.error(
-                    "team_extraction_failed",
-                    team_name=failed_team_name,
-                    team_number=team_number,
-                    error=str(e),
-                    exc_info=True,
-                )
+            (
+                team_player_stats,
+                inactive_player_info,
+            ) = self.get_player_stats_dataframe_per_team(team_number)
+            league_player_team_stats[team_number] = team_player_stats
+            if inactive_player_info:
+                inactive_players_per_team[team_number] = inactive_player_info
+            logger.info(
+                "team_extraction_success",
+                team_name=self.team_id_name_mapping[team_number],
+                team_number=team_number,
+                players_count=len(team_player_stats),
+            )
         player_stats = pd.concat(league_player_team_stats.values())
         player_stats["date"] = DATE_TIME_EXECUTION
 
-        assert sorted(player_stats.columns.to_list()) == expected_output_columns()
-
-        return player_stats, inactive_players_per_team, failed_teams
+        return player_stats, inactive_players_per_team
 
     def get_player_stats_dataframe_per_team(
         self,
         team_number: int,
     ) -> tuple[pd.DataFrame, dict[int, str]]:
-        """Takes as input a team number and returns a pandas DataFrame
-        containing the stats of the active players,
-        and a dictionary with inactive player information.
+        """Return roster players' totals and players without statistics.
 
-        This methodology has a big problem: if players change teams, their
-        stats from the previous team will not be considered.
-
-        Args:
-            team_number (int): MLB team number
-
-        Returns:
-            pd.DataFrame: pandas DataFrame containing containing the
-            stats of the active players for a particular team
-            dict: Dictionary with inactive player information
+        team_id identifies roster membership; statistics include all teams the
+        player represented during the selected season or career.
         """
 
         roster_players = self.league_team_roster_players[team_number]
@@ -207,7 +212,7 @@ class DataExtractor:
             active_players,
             inactive_player_info,
         ) = player_information_per_team.get_team_stats()
-        team_player_stats["playername"] = list(active_players.values())
+        team_player_stats["playername"] = pd.Series(active_players)
         team_player_stats["team_id"] = team_number
 
         return (
@@ -272,12 +277,9 @@ def run_extraction(database_path: str, league_name: str, execution_date: str) ->
     logger.info(
         "team_mapping_created", teams_count=len(data_extractor.team_id_name_mapping)
     )
-    player_stats, inactive_players_per_team, failed_teams = (
+    player_stats, inactive_players_per_team = (
         data_extractor.get_player_stats_per_league()
     )
-    if failed_teams:
-        logger.error("teams_extraction_failed", failed_teams=failed_teams)
-        raise RuntimeError(f"Extraction failed for teams: {', '.join(failed_teams)}")
 
     backup_database_before_migration(database_path)
     with create_connection(database_path) as conn:

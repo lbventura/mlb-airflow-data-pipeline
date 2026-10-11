@@ -62,10 +62,9 @@ def create_innings_pitched_normalization(
         data_shape=input_df.shape,
     )
 
+    innings = input_df["outs"] / 3
     for feature_name in feature_name_list:
-        input_df[feature_name + "inningsPitched"] = (
-            input_df[feature_name] / input_df["inningsPitched"]
-        )
+        input_df[feature_name + "inningsPitched"] = input_df[feature_name] / innings
 
     logger.debug(
         "innings_pitched_normalization_completed",

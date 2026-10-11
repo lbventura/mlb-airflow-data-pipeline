@@ -43,6 +43,10 @@ OUTPUT_FILE_LOCATION = os.path.join(
 # player information fields
 PLAYER_INFORMATION = ["playername", "team_id"]
 
+DEFENDER_POSITIONS = ("C", "1B", "2B", "3B", "SS", "LF", "CF", "RF")
+# Retain these source splits even though defender reports exclude P and DH.
+FIELDING_POSITIONS = ("P", *DEFENDER_POSITIONS, "DH")
+
 # separate data into batting, pitching and defense
 BATTING_STATS = [
     "gamesPlayed",
@@ -75,6 +79,7 @@ BATTING_STATS = [
     "catchersInterference",
 ]
 
+# `innings` comes from fielding; pitching uses `inningsPitched`.
 PITCHING_STATS = [
     "gamesPlayed",
     "gamesStarted",
@@ -108,7 +113,6 @@ PITCHING_STATS = [
     "homeRunsPer9",
     "inheritedRunners",
     "inheritedRunnersScored",
-    "innings",
     "outs",
 ]
 
@@ -132,96 +136,77 @@ DEFENSIVE_STATS = [
 ]
 
 
-# list of expected output columns
+# StatsAPI emits more fields than treatment currently uses. Keep these source
+# names separate so extraction can validate its complete grouped schema.
+BATTING_SOURCE_STATS = set(BATTING_STATS) | {
+    "age",
+    "atBatsPerHomeRun",
+    "babip",
+    "caughtStealingPercentage",
+    "numberOfPitches",
+    "stolenBasePercentage",
+}
+
+# In pitching, homeRuns/hits/baseOnBalls are allowed to opponents, and
+# atBats/avg describe opponents. numberOfPitches counts pitches thrown;
+# its batting counterpart counts pitches seen.
+PITCHING_SOURCE_STATS = set(PITCHING_STATS) | {
+    "age",
+    "airOuts",
+    "atBats",
+    "avg",
+    "baseOnBalls",
+    "catchersInterference",
+    "caughtStealing",
+    "caughtStealingPercentage",
+    "doubles",
+    "groundIntoDoublePlay",
+    "groundOuts",
+    "groundOutsToAirouts",
+    "hitByPitch",
+    "hits",
+    "homeRuns",
+    "obp",
+    "ops",
+    "runs",
+    "runsScoredPer9",
+    "sacBunts",
+    "sacFlies",
+    "slg",
+    "stolenBasePercentage",
+    "stolenBases",
+    "strikeOuts",
+    "strikeoutWalkRatio",
+    "totalBases",
+    "triples",
+    "winPercentage",
+}
+
+FIELDING_SOURCE_STATS = (set(DEFENSIVE_STATS) - {"atBats", "plateAppearances"}) | {
+    "age",
+    "catchersInterference",
+    "caughtStealing",
+    "caughtStealingPercentage",
+    "gamesStarted",
+    "innings",
+    "pickoffs",
+    "stolenBasePercentage",
+    "stolenBases",
+    "wildPitches",
+}
+
+
 def expected_output_columns() -> list[str]:
-    return sorted(
-        [
-            "playername",
-            "age",
-            "gamesPlayed",
-            "gamesStarted",
-            "caughtStealing",
-            "caughtStealingPercentage",
-            "stolenBases",
-            "stolenBasePercentage",
-            "assists",
-            "putOuts",
-            "errors",
-            "chances",
-            "fielding",
-            "rangeFactorPerGame",
-            "rangeFactorPer9Inn",
-            "innings",
-            "games",
-            "passedBall",
-            "doublePlays",
-            "triplePlays",
-            "catcherERA",
-            "catchersInterference",
-            "wildPitches",
-            "throwingErrors",
-            "pickoffs",
-            "groundOuts",
-            "airOuts",
-            "runs",
-            "doubles",
-            "triples",
-            "homeRuns",
-            "strikeOuts",
-            "baseOnBalls",
-            "intentionalWalks",
-            "hits",
-            "hitByPitch",
-            "avg",
-            "atBats",
-            "obp",
-            "slg",
-            "ops",
-            "groundIntoDoublePlay",
-            "numberOfPitches",
-            "plateAppearances",
-            "totalBases",
-            "rbi",
-            "leftOnBase",
-            "sacBunts",
-            "sacFlies",
-            "babip",
-            "groundOutsToAirouts",
-            "atBatsPerHomeRun",
-            "era",
-            "inningsPitched",
-            "wins",
-            "losses",
-            "saves",
-            "saveOpportunities",
-            "holds",
-            "blownSaves",
-            "earnedRuns",
-            "whip",
-            "battersFaced",
-            "outs",
-            "gamesPitched",
-            "completeGames",
-            "shutouts",
-            "strikes",
-            "strikePercentage",
-            "hitBatsmen",
-            "balks",
-            "winPercentage",
-            "pitchesPerInning",
-            "gamesFinished",
-            "strikeoutWalkRatio",
-            "strikeoutsPer9Inn",
-            "walksPer9Inn",
-            "hitsPer9Inn",
-            "runsScoredPer9",
-            "homeRunsPer9",
-            "inheritedRunners",
-            "inheritedRunnersScored",
-            "team_id",
-            "date",
-        ]
+    """Supported grouped columns for the fixed source position vocabulary."""
+    columns = {"playername", "team_id", "date"}
+    columns.update(f"hitting_{stat}" for stat in BATTING_SOURCE_STATS)
+    columns.update(f"pitching_{stat}" for stat in PITCHING_SOURCE_STATS)
+    columns.update(
+        f"fielding_{position}_{stat}"
+        for position in FIELDING_POSITIONS
+        for stat in FIELDING_SOURCE_STATS
     )
+    return sorted(columns)
 
 
 def american_league_team_id_name() -> dict:
@@ -230,7 +215,7 @@ def american_league_team_id_name() -> dict:
         117: "Houston Astros",
         136: "Seattle Mariners",
         108: "Los Angeles Angels",
-        133: "Athletics", # They are no longer the "Oakland Athletics" in the MLB API
+        133: "Athletics",  # They are no longer the "Oakland Athletics" in the MLB API
         139: "Tampa Bay Rays",
         110: "Baltimore Orioles",
         147: "New York Yankees",

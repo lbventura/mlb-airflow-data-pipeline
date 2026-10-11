@@ -17,13 +17,12 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
 )
 
 
-def test_player_stats(lookup_player_expected_result: list[dict[str, Any]]) -> None:
+def test_player_stat_data(lookup_player_expected_result: list[dict[str, Any]]) -> None:
     example_id: int = lookup_player_expected_result[0]["id"]
-    result: list[str] = statsapi.player_stats(example_id, type="season").split("\n")
-    assert isinstance(result, list)
-    assert isinstance(result[0], str)
-    # check that the ":" separator is used
-    assert [stat for stat in result if ":" in stat]
+    result = statsapi.player_stat_data(example_id, type="season")
+    assert result["id"] == example_id
+    assert any(section["group"] == "hitting" for section in result["stats"])
+    assert all(isinstance(section["stats"], dict) for section in result["stats"])
 
 
 def test_lookup_player(lookup_player_expected_result: list[dict[str, Any]]) -> None:
@@ -42,6 +41,7 @@ def test_team_roster() -> None:
     players = _get_team_roster_players(147)
     # assert players[592450] == "Aaron Judge" # TODO: Revert this once Aaron Judge is off the IL
     assert players[502671] == "Paul Goldschmidt"
+
 
 def test_standings_data() -> None:
     american_league_id: int = LEAGUE_MAPPING["american_league"]
@@ -72,23 +72,22 @@ def test_standings_data() -> None:
 
 
 def test_team_stats_get_team_stats() -> None:
-    # this test requires a manual input of players that are known to be
-    # active
     active_mlb_players: dict[int, str] = {
         592450: "Aaron Judge",
-        543305: "Aaron Hicks",
         543037: "Gerrit Cole",
     }
-    team_stats: TeamStats = TeamStats(active_mlb_players)
+    # Hicks has no current-season statistics.
+    inactive_mlb_players = {543305: "Aaron Hicks"}
+    team_stats = TeamStats(active_mlb_players | inactive_mlb_players)
     (
         team_player_stats,
         active_players,
         inactive_player_info,
     ) = team_stats.get_team_stats()
 
-    assert sorted(list(team_player_stats.index)) == sorted(active_mlb_players)
+    assert sorted(team_player_stats.index) == sorted(active_mlb_players)
     assert active_players == active_mlb_players
-    assert not inactive_player_info
+    assert inactive_player_info == inactive_mlb_players
 
 
 @pytest.mark.parametrize(

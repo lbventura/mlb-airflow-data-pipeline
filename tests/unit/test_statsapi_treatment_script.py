@@ -1,245 +1,99 @@
-import os
-from pathlib import Path
-
 import pandas as pd
-import pandas.api.types as pdtypes
 import pytest
 
-from mlb_airflow_data_pipeline.db_utils import create_connection
-from mlb_airflow_data_pipeline.statsapi_feature_utils import (
-    create_mean_normalization,
-    create_plate_appearance_normalization,
-)
 from mlb_airflow_data_pipeline.statsapi_treatment_script import (
     _convert_numeric_columns,
-    DataTreater,
-    DataTreaterInputRepresentation,
-    TreatmentDataPaths,
-    batter_transformation_dict,
-    batting_stats_list,
-)
-
-CURRENT_DIR: str = os.path.dirname(os.path.realpath(__file__))
-
-EXAMPLE_DATA_PATH: str = os.path.join(
-    CURRENT_DIR, "national_league_example_full_player_stats_df.csv"
+    _fielding_subset,
+    _grouped_subset,
+    defender_input_data_repr,
+    filter_data,
 )
 
 
-batter_filter_conditions_dict: dict[str, int] = {"plateAppearances": 100, "atBats": 50}
-
-batter_input_data_repr: DataTreaterInputRepresentation = DataTreaterInputRepresentation(
-    subset_columns=batting_stats_list,
-    filter_conditions_dict=batter_filter_conditions_dict,
-    transformation_dict=batter_transformation_dict,
-)
-
-
-def numeric_features_list() -> list[str]:
-    return [
-        "airOuts",
-        "assists",
-        "atBats",
-        "avg",
-        "balks",
-        "baseOnBalls",
-        "battersFaced",
-        "blownSaves",
-        "catcherERA",
-        "catchersInterference",
-        "caughtStealing",
-        "chances",
-        "completeGames",
-        "doublePlays",
-        "doubles",
-        "earnedRuns",
-        "era",
-        "errors",
-        "fielding",
-        "games",
-        "gamesFinished",
-        "gamesPitched",
-        "gamesPlayed",
-        "gamesStarted",
-        "groundIntoDoublePlay",
-        "groundOuts",
-        "hitBatsmen",
-        "hitByPitch",
-        "hits",
-        "hitsPer9Inn",
-        "holds",
-        "homeRuns",
-        "homeRunsPer9",
-        "inheritedRunners",
-        "inheritedRunnersScored",
-        "innings",
-        "inningsPitched",
-        "intentionalWalks",
-        "leftOnBase",
-        "losses",
-        "numberOfPitches",
-        "obp",
-        "ops",
-        "outs",
-        "passedBall",
-        "pickoffs",
-        "pitchesPerInning",
-        "plateAppearances",
-        "putOuts",
-        "rangeFactorPerGame",
-        "rbi",
-        "runs",
-        "runsScoredPer9",
-        "sacBunts",
-        "sacFlies",
-        "saveOpportunities",
-        "saves",
-        "shutouts",
-        "slg",
-        "stolenBases",
-        "strikeOuts",
-        "strikePercentage",
-        "strikeoutsPer9Inn",
-        "strikes",
-        "team_id",
-        "throwingErrors",
-        "totalBases",
-        "triplePlays",
-        "triples",
-        "walksPer9Inn",
-        "whip",
-        "wildPitches",
-        "wins",
-    ]
-
-
-def object_features_list() -> list[str]:
-    return [
-        "atBatsPerHomeRun",
-        "babip",
-        "date",
-        "groundOutsToAirouts",
-        "league_name",
-        "playername",
-        "rangeFactorPer9Inn",
-        "stolenBasePercentage",
-        "strikeoutWalkRatio",
-        "winPercentage",
-    ]
-
-
-@pytest.fixture
-def batter_input_paths(tmp_path: Path) -> TreatmentDataPaths:
-    execution_date = "2026-01-01"
-    player_stats = pd.read_csv(EXAMPLE_DATA_PATH, index_col=0).assign(
-        date=execution_date,
-        league_name="national_league",
-    )
-    database_path = tmp_path / "mlb_data.db"
-    with create_connection(str(database_path)) as conn:
-        player_stats.to_sql("player_stats", conn, index=False)
-
-    return TreatmentDataPaths(
-        database_path=str(database_path),
-        league_name="national_league",
-        execution_date=execution_date,
-        path_to_output_data=str(tmp_path / "batter_stats.csv"),
+def test_convert_known_metrics_preserves_numbers_and_missing_rates() -> None:
+    result = _convert_numeric_columns(
+        pd.DataFrame(
+            {
+                "hits": ["12", "8", None],
+                "hitting_avg": [".300", ".250", None],
+                "fielding_C_rangeFactorPer9Inn": ["-.--", "2.50", None],
+                "playername": ["123", "Player Two", "Player Three"],
+                "position": ["C", "1B", "RF"],
+            }
+        )
     )
 
+    assert result.loc[:1, "hits"].tolist() == [12, 8]
+    assert result.loc[:1, "hitting_avg"].tolist() == [0.300, 0.250]
+    assert result.loc[1, "fielding_C_rangeFactorPer9Inn"] == 2.5
+    assert result.loc[[0, 2], "fielding_C_rangeFactorPer9Inn"].isna().all()
+    assert result["playername"].tolist() == ["123", "Player Two", "Player Three"]
+    assert result["position"].tolist() == ["C", "1B", "RF"]
 
-@pytest.fixture
-def batter_data_treater(batter_input_paths: TreatmentDataPaths) -> DataTreater:
-    return DataTreater(
-        data_paths=batter_input_paths, input_parameters=batter_input_data_repr
+
+def test_grouped_projection_rejects_missing_required_columns() -> None:
+    data = pd.DataFrame(
+        [{"playername": "Player", "team_id": 147, "hitting_atBats": 50}]
     )
+    with pytest.raises(KeyError, match="hitting_hits"):
+        _grouped_subset(data, ["playername", "team_id", "hits"], "hitting")
 
 
-@pytest.mark.parametrize(
-    "is_numeric, feature_list",
-    [(True, numeric_features_list()), (False, object_features_list())],
-)
-def test_data_treater_input_data(
-    batter_data_treater: DataTreater,
-    is_numeric: bool,
-    feature_list: list[str],
+def test_absent_group_has_an_empty_subset() -> None:
+    data = pd.DataFrame([{"playername": "Player", "team_id": 147, "hitting_hits": 4}])
+    result = _grouped_subset(data, ["playername", "team_id", "gamesPlayed"], "pitching")
+    assert result.empty
+    assert result.columns.tolist() == ["playername", "team_id", "gamesPlayed"]
+
+
+def test_filter_keeps_boundary_and_excludes_insufficient_or_missing_stats() -> None:
+    data = pd.DataFrame(
+        {"atBats": [50, 50, 49, 50], "plateAppearances": [100, 99, 100, None]},
+        index=[101, 102, 103, 104],
+    )
+    result = filter_data(data, {"atBats": 50, "plateAppearances": 100})
+    assert result.index.tolist() == [101]
+
+
+def test_defenders_follow_fixed_position_order_and_exclude_pitcher_and_dh() -> None:
+    positions = ("C", "1B", "2B", "3B", "SS", "LF", "CF", "RF")
+    row = {
+        "playername": "Player",
+        "team_id": 147,
+        "hitting_atBats": 50,
+        "hitting_plateAppearances": 100,
+        "fielding_C_catcherERA": 3.25,
+        **{
+            f"fielding_{position}_gamesPlayed": 1
+            for position in reversed(positions + ("P", "DH"))
+        },
+    }
+    result = _fielding_subset(
+        pd.DataFrame([row]), defender_input_data_repr.subset_columns
+    )
+    assert result["position"].tolist() == list(positions)
+    assert result["atBats"].tolist() == [50] * 8
+    assert result.loc[0, "catcherERA"] == 3.25
+    assert result.loc[1:, "catcherERA"].isna().all()
+
+
+@pytest.mark.parametrize("position", ["P", "DH", None])
+def test_no_defender_positions_produces_an_empty_filterable_subset(
+    position: str | None,
 ) -> None:
-    output_df: pd.DataFrame = batter_data_treater.get_input_data()
-
-    output_df_is_numeric_columns: dict[str, bool] = {
-        col: pdtypes.is_numeric_dtype(output_df[col]) for col in output_df.columns
+    row = {
+        "playername": "Player",
+        "team_id": 147,
+        "hitting_atBats": 50,
+        "hitting_plateAppearances": 100,
     }
-
-    extracted_numeric_features: list[str] = sorted(
-        [
-            key
-            for key, value in output_df_is_numeric_columns.items()
-            if value == is_numeric
-        ]
+    if position:
+        row[f"fielding_{position}_gamesPlayed"] = 10
+    subset = _fielding_subset(
+        pd.DataFrame([row]), defender_input_data_repr.subset_columns
     )
-    expected_numeric_features: list[str] = feature_list
-    assert extracted_numeric_features == expected_numeric_features
-
-
-def test_data_treater_filter_data(batter_data_treater: DataTreater) -> None:
-    output_df: pd.DataFrame = batter_data_treater.get_filter_data()
-
-    expected_output_shape: tuple[int, int] = (129, 30)
-    assert output_df.shape == expected_output_shape
-
-    assert not sum(
-        output_df["plateAppearances"]
-        < batter_filter_conditions_dict.get("plateAppearances")
-    )
-    assert not sum(output_df["atBats"] < batter_filter_conditions_dict.get("atBats"))
-
-
-def test_data_treater_get_output_data(
-    batter_data_treater: DataTreater,
-) -> None:
-    output_data: pd.DataFrame = batter_data_treater.get_output_data()
-
-    actual_features: set[str] = set(output_data.columns)
-
-    # for babip and difstrikeOutsbaseOnBalls, the test
-    # is less restrictive than below because these two features
-    # are used to generate other features below
-    assert "babip" in actual_features
-    assert "difstrikeOutsbaseOnBalls" in actual_features
-
-    expected_per_plate_features: set[str] = {
-        ele + "perplateAppearance"
-        for ele in batter_input_data_repr.transformation_dict[
-            create_plate_appearance_normalization
-        ]
-    }
-
-    assert expected_per_plate_features.difference(actual_features) == set()
-
-    expected_normalized_features: set[str] = {
-        ele + suffix
-        for ele in batter_input_data_repr.transformation_dict[create_mean_normalization]
-        for suffix in ["_mean", "_std", "_z_score"]
-    } | {
-        "normalized_" + ele
-        for ele in batter_input_data_repr.transformation_dict[create_mean_normalization]
-    }
-
-    assert expected_normalized_features.difference(actual_features) == set()
-
-
-def test_convert_numeric_columns() -> None:
-    input_data = pd.DataFrame(
-        {
-            "hits": ["12", "8"],
-            "batting_average": [".300", ".250"],
-            "range_factor": ["-.--", "2.50"],
-            "playername": ["Player One", "Player Two"],
-        }
-    )
-
-    output_data = _convert_numeric_columns(input_data)
-
-    assert pdtypes.is_numeric_dtype(output_data["hits"])
-    assert pdtypes.is_numeric_dtype(output_data["batting_average"])
-    assert not pdtypes.is_numeric_dtype(output_data["range_factor"])
-    assert not pdtypes.is_numeric_dtype(output_data["playername"])
+    result = filter_data(subset, defender_input_data_repr.filter_conditions_dict)
+    assert result.empty
+    assert result.columns.tolist() == defender_input_data_repr.subset_columns + [
+        "position"
+    ]
