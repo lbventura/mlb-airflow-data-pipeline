@@ -50,7 +50,7 @@ Keep code in the layer that owns its behavior. Avoid duplicating pipeline logic 
 
 Create a branch from an up-to-date `main`. Use a prefix found in the repository's branch history, then add a short, lowercase, hyphen-separated description:
 
-- `enhancement/` for new
+- `enhancement/` for new functionality or improvements to existing functionality.
 - `maintenance/` for upkeep, dependency, and tooling changes.
 - `observability/` for logging and diagnostics.
 - `testing/` for tests and test infrastructure.
