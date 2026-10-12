@@ -6,6 +6,7 @@ from typing import Iterator
 import pandas as pd
 import pytest
 
+from mlb_airflow_data_pipeline import db_utils
 from mlb_airflow_data_pipeline.db_utils import (
     create_connection,
     read_player_stats,
@@ -60,3 +61,12 @@ def test_read_player_stats_scopes_to_one_league_run(
     result = read_player_stats(db_connection, "american_league", "2026-01-01")
 
     assert result["playername"].tolist() == ["AL player"]
+
+
+def test_default_database_path_does_not_create_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    missing_directory = tmp_path / "missing-data"
+    monkeypatch.setattr(db_utils, "DATA_FILE_LOCATION", str(missing_directory))
+    assert db_utils.database_path() == missing_directory / "mlb_data.db"
+    assert not missing_directory.exists()

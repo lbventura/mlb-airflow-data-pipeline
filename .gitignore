@@ -30,6 +30,7 @@ mlb_airflow_data_pipeline/db_data/*.csv
 mlb_airflow_data_pipeline/db_data/*.db-journal
 *.pre-issue-62.bak
 mlb_airflow_data_pipeline/output/
+mlb_airflow_data_pipeline/report/
 
 # Helper folders
 implementation_plans

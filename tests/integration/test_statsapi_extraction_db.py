@@ -114,7 +114,7 @@ def test_collision_survives_database_write_with_one_stats_call(
     rows["playername"] = "Player One"
     rows["team_id"] = 147
     database_path = tmp_path / "mlb_data.db"
-    with create_connection(str(database_path)) as conn:
+    with sqlite3.connect(database_path) as conn:
         save_extraction_run(
             conn,
             "american_league",
@@ -219,13 +219,10 @@ def test_roster_player_stats_reach_database(
     ]
     lookup_player.assert_not_called()
 
-    treat_player_stats(
-        str(database_path), "american_league", execution_date, str(tmp_path)
-    )
+    treat_player_stats(str(database_path), "american_league", execution_date)
     outputs = {
-        role: pd.read_csv(
-            tmp_path / f"american_league_{execution_date}_{role}_stats_df.csv",
-            index_col=0,
+        role: read_output(
+            database_path, role, "american_league", execution_date
         ).set_index("playername")
         for role in ("batter", "pitcher", "defender")
     }
@@ -284,3 +281,12 @@ def test_data_extractor_creates_valid_dataframes() -> None:
     assert len(standings_df) > 0
     assert "team_id" in standings_df.columns
     assert "name" in standings_df.columns
+
+
+def read_output(
+    database_path: Path, category: str, league: str, date: str
+) -> pd.DataFrame:
+    from mlb_airflow_data_pipeline.db_utils import read_treated_stats
+
+    with sqlite3.connect(database_path) as conn:
+        return read_treated_stats(conn, category, league, date)
