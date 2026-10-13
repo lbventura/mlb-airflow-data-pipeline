@@ -2,13 +2,11 @@
 
 batter_stats and pitcher_stats have one row per league/date/team/player.
 defender_stats adds position to that identity for grouped statistics.
-Historical CSV rows may lack player IDs/positions and retain their provenance.
 treated_snapshots records completed categories, including empty results.
-csv_imports records verified historical files and is created only during import.
 
 TABLE_SCHEMAS maps each table name to its columns, constraints, and indexes.
 Shared statistic groups define metric columns; readers use these same declarations.
-db_utils owns execution and transactions.
+treated_storage owns database reads and writes.
 """
 
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
@@ -47,11 +45,6 @@ PITCHER_MEAN_STATS = [
     "homeRunsPer9",
 ]
 DEFENDER_MEAN_STATS = ["catcherERA", "assists", "errors", "doublePlays", "fielding"]
-BASE_STATS = {
-    "batter": BATTING_STATS,
-    "pitcher": PITCHING_STATS,
-    "defender": DEFENSIVE_STATS,
-}
 RATE_STATS = {
     "avg",
     "obp",
@@ -85,23 +78,11 @@ IDENTITY_COLUMNS = {
     "league_name": "TEXT NOT NULL",
     "date": "TEXT NOT NULL",
     "team_id": "INTEGER NOT NULL",
-    "player_id": "INTEGER",
+    "player_id": "INTEGER NOT NULL",
     "playername": "TEXT NOT NULL",
     "position": "TEXT",
     "layout": "TEXT NOT NULL CHECK (layout IN ('grouped','legacy_unprefixed'))",
-    "origin": "TEXT NOT NULL CHECK (origin IN ('treatment','csv'))",
-    "source_checksum": "TEXT",
-    "source_row": "INTEGER",
-    "source_index": "TEXT",
-    "source_values": "TEXT",
 }
-
-
-PLAYER_CONSTRAINTS = (
-    "CHECK (origin = 'csv' OR player_id IS NOT NULL)",
-    "CHECK (origin != 'csv' OR (source_checksum IS NOT NULL AND source_row IS NOT NULL))",
-    "UNIQUE (league_name, date, source_checksum, source_row)",
-)
 
 
 def _stat_columns(stats: list[str]) -> dict[str, str]:
@@ -125,12 +106,7 @@ def _player_indexes(table: str, *, include_position: bool = False) -> tuple[str,
     position = ", COALESCE(position, '')" if include_position else ""
     return (
         f"""CREATE UNIQUE INDEX IF NOT EXISTS {table}_player_key
-            ON {table} (league_name, date, team_id, player_id{position})
-            WHERE player_id IS NOT NULL""",
-        f"""CREATE UNIQUE INDEX IF NOT EXISTS {table}_legacy_key
-            ON {table} (league_name, date, team_id, playername{position})
-            WHERE player_id IS NULL""",
-        f"CREATE INDEX IF NOT EXISTS {table}_scope ON {table} (league_name, date)",
+            ON {table} (league_name, date, team_id, player_id{position})""",
     )
 
 
@@ -144,18 +120,17 @@ TABLE_SCHEMAS: dict[str, dict] = {
             **{f"{stat}perplateAppearance": "REAL" for stat in BATTER_PLATE_STATS},
             **_mean_columns(BATTER_MEAN_STATS),
         },
-        "constraints": PLAYER_CONSTRAINTS,
+        "constraints": (),
         "indexes": _player_indexes("batter_stats"),
     },
     "pitcher_stats": {
         "columns": {
             **IDENTITY_COLUMNS,
             **_stat_columns(PITCHING_STATS),
-            "innings": "REAL",  # Retained for historical CSV imports.
             **{f"{stat}inningsPitched": "REAL" for stat in PITCHER_INNINGS_STATS},
             **_mean_columns(PITCHER_MEAN_STATS),
         },
-        "constraints": PLAYER_CONSTRAINTS,
+        "constraints": (),
         "indexes": _player_indexes("pitcher_stats"),
     },
     "defender_stats": {
@@ -165,7 +140,6 @@ TABLE_SCHEMAS: dict[str, dict] = {
             **_mean_columns(DEFENDER_MEAN_STATS),
         },
         "constraints": (
-            *PLAYER_CONSTRAINTS,
             "CHECK (layout != 'grouped' OR position IN ('C','1B','2B','3B','SS','LF','CF','RF'))",
             "CHECK (layout != 'grouped' OR position IS NOT NULL)",
         ),
@@ -177,23 +151,9 @@ TABLE_SCHEMAS: dict[str, dict] = {
             "date": "TEXT NOT NULL",
             "category": "TEXT NOT NULL",
             "layout": "TEXT NOT NULL CHECK (layout IN ('grouped', 'legacy_unprefixed'))",
-            "origin": "TEXT NOT NULL CHECK (origin IN ('treatment', 'csv'))",
             "row_count": "INTEGER NOT NULL CHECK (row_count >= 0)",
         },
         "constraints": ("PRIMARY KEY (league_name, date, category)",),
-        "indexes": (),
-    },
-    "csv_imports": {
-        "columns": {
-            "filename": "TEXT PRIMARY KEY",
-            "checksum": "TEXT NOT NULL",
-            "league_name": "TEXT NOT NULL",
-            "date": "TEXT NOT NULL",
-            "category": "TEXT NOT NULL",
-            "row_count": "INTEGER NOT NULL",
-            "inventory_json": "TEXT NOT NULL",
-        },
-        "constraints": (),
         "indexes": (),
     },
 }

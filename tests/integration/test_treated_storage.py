@@ -7,10 +7,10 @@ import pandas as pd
 import pytest
 
 from mlb_airflow_data_pipeline import statsapi_treatment_script as treatment
-from mlb_airflow_data_pipeline.db_utils import (
-    read_connection,
+from mlb_airflow_data_pipeline.db_utils import read_connection, save_extraction_run
+from mlb_airflow_data_pipeline.treated_storage import (
     read_treated_stats,
-    save_extraction_run,
+    invalidate_treated_run,
     save_treated_category,
     SnapshotUnavailable,
 )
@@ -181,6 +181,10 @@ def test_missing_database_is_not_created(tmp_path: Path) -> None:
         pytest.param("player_id", None, ValueError, id="missing-player"),
         pytest.param("player_id", 101.5, ValueError, id="fractional-player"),
         pytest.param("team_id", None, ValueError, id="missing-team"),
+        pytest.param("player_id", 0, ValueError, id="zero-player"),
+        pytest.param("team_id", -1, ValueError, id="negative-team"),
+        pytest.param("playername", "", ValueError, id="empty-name"),
+        pytest.param("position", None, ValueError, id="missing-position"),
         pytest.param(
             "position", "P", sqlite3.IntegrityError, id="unsupported-position"
         ),
@@ -191,7 +195,7 @@ def test_invalid_identity_preserves_snapshot(
 ) -> None:
     with sqlite3.connect(published_database) as conn:
         original = read_treated_stats(conn, "defender", LEAGUE, DATE)
-        replacement = original.drop(columns=["league_name", "date", "layout", "origin"])
+        replacement = original.drop(columns=["league_name", "date", "layout"])
         replacement = replacement.astype({field: object})
         replacement.loc[0, field] = value
         with pytest.raises(error), conn:
@@ -241,4 +245,36 @@ def test_invalid_scope_cannot_replace_snapshot(
     with pytest.raises(ValueError):
         treatment.treat_player_stats(published_database, league, date)
     with sqlite3.connect(published_database) as conn:
+        assert list(conn.iterdump()) == before
+
+
+def test_storage_normalizes_infinity_without_changing_input(
+    published_database: Path,
+) -> None:
+    replacement = pd.DataFrame(
+        {
+            "team_id": [147, 147],
+            "player_id": [101, 102],
+            "playername": ["One", "Two"],
+            "hits": [4, 6],
+            "avg": [float("inf"), float("-inf")],
+        }
+    )
+    original = replacement.copy(deep=True)
+    with sqlite3.connect(published_database) as conn:
+        save_treated_category(conn, "batter", LEAGUE, DATE, replacement, "grouped")
+        stored = read_treated_stats(conn, "batter", LEAGUE, DATE)
+    pd.testing.assert_frame_equal(replacement, original)
+    assert stored.avg.isna().all()
+    assert stored.hits.tolist() == [4, 6]
+
+
+def test_uncreated_treatment_is_unavailable_and_invalidation_is_a_noop(
+    database: Path,
+) -> None:
+    with sqlite3.connect(database) as conn:
+        before = list(conn.iterdump())
+        with pytest.raises(SnapshotUnavailable, match=f"{LEAGUE}/{DATE}/batter"):
+            read_treated_stats(conn, "batter", LEAGUE, DATE)
+        invalidate_treated_run(conn, LEAGUE, DATE)
         assert list(conn.iterdump()) == before

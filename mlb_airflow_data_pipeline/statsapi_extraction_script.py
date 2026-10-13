@@ -22,6 +22,7 @@ from mlb_airflow_data_pipeline.db_utils import (
     get_database_path,
     save_extraction_run,
 )
+from mlb_airflow_data_pipeline.treated_storage import invalidate_treated_run
 
 DATE_TIME_EXECUTION = datetime.today().strftime("%Y-%m-%d")
 
@@ -282,7 +283,8 @@ def run_extraction(database_path: str, league_name: str, execution_date: str) ->
     )
 
     backup_database_before_migration(database_path)
-    with create_connection(database_path) as conn:
+    with create_connection(database_path) as conn, conn:
+        conn.execute("BEGIN IMMEDIATE")
         save_extraction_run(
             conn,
             league_name,
@@ -290,6 +292,7 @@ def run_extraction(database_path: str, league_name: str, execution_date: str) ->
             data_extractor.league_standings,
             player_stats,
         )
+        invalidate_treated_run(conn, league_name, execution_date)
     logger.info(
         "league_standings_saved", database_path=database_path, table="league_standings"
     )

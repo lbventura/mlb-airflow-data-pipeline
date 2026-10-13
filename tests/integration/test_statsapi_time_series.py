@@ -7,7 +7,7 @@ import pandas as pd
 import pytest
 
 from mlb_airflow_data_pipeline import statsapi_treatment_script as treatment
-from mlb_airflow_data_pipeline.db_utils import save_treated_category
+from mlb_airflow_data_pipeline.treated_storage import save_treated_category
 from mlb_airflow_data_pipeline.statsapi_time_series_creation_analysis_script import (
     PlotGenerator,
     batter_input_parameters,
@@ -107,21 +107,16 @@ def test_transferred_players_have_separate_team_series(
     assert frame.filter(like="player 101, team 119").iloc[1, 0] == 1
 
 
-@pytest.mark.parametrize(
-    "known_ids", [True, False], ids=["known-ids", "historical-names"]
-)
 def test_legacy_and_grouped_history_keep_distinct_series(
-    published_database: Path, known_ids: bool
+    published_database: Path,
 ) -> None:
     historical = pd.DataFrame(
         {
             "team_id": [147, 147],
-            "player_id": [101, 102] if known_ids else [None, None],
+            "player_id": [101, 102],
             "playername": ["Historical One", "Historical Two"],
             "homeRuns": [3, 4],
             "obp": [0.2, 0.3],
-            "source_checksum": ["original-csv", "original-csv"],
-            "source_row": [0, 1],
         }
     )
     with sqlite3.connect(published_database) as conn:
@@ -132,7 +127,6 @@ def test_legacy_and_grouped_history_keep_distinct_series(
             "2026-10-01",
             historical,
             "legacy_unprefixed",
-            origin="csv",
         )
     frame = PlotGenerator(
         batter_input_parameters, published_database, LEAGUE, DATE
@@ -144,8 +138,6 @@ def test_legacy_and_grouped_history_keep_distinct_series(
     assert legacy.loc[DATE].isna().all()
     assert grouped.loc["2026-10-01"].isna().all()
     assert grouped.loc[DATE].tolist() == [1, 1]
-    if not known_ids:
-        assert all("historical name" in name for name in legacy.columns)
 
 
 def test_history_omits_invalidated_treatment(

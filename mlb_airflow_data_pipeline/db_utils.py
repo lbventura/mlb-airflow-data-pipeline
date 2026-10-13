@@ -18,25 +18,13 @@ all key columns must be non-null and together form the table's primary key.
 import os
 import sqlite3
 import tempfile
-from datetime import date
-
-import numpy as np
 from contextlib import closing, contextmanager
 from pathlib import Path
 from typing import Iterator
 
 import pandas as pd
 
-from mlb_airflow_data_pipeline.statsapi_parameters_script import (
-    DATA_FILE_LOCATION,
-    LEAGUE_MAPPING,
-)
-from mlb_airflow_data_pipeline.treated_schema import (
-    LAYOUTS,
-    TREATED_TABLES,
-    metric_types,
-    table_statements,
-)
+from mlb_airflow_data_pipeline.statsapi_parameters_script import DATA_FILE_LOCATION
 
 RUN_KEYS = {
     "league_standings": ("league_name", "date", "team_id"),
@@ -224,9 +212,10 @@ def _migrate_run_table(
     conn.execute(f"ALTER TABLE {_quoted(replacement)} RENAME TO {_quoted(table_name)}")
 
 
-def _insert_rows(
+def insert_rows(
     conn: sqlite3.Connection, table_name: str, dataframe: pd.DataFrame
 ) -> None:
+    """Insert dataframe rows, preserving null values, without committing."""
     columns = list(dataframe.columns)
     placeholders = ", ".join("?" for _ in columns)
     insert_statement = (
@@ -313,8 +302,7 @@ def save_extraction_run(
                 f"DELETE FROM {_quoted(table_name)} WHERE league_name = ? AND date = ?",
                 (league_name, execution_date),
             )
-            _insert_rows(conn, table_name, dataframe)
-        invalidate_treated_run(conn, league_name, execution_date)
+            insert_rows(conn, table_name, dataframe)
         conn.execute("RELEASE SAVEPOINT extraction_run")
     except Exception:
         conn.execute("ROLLBACK TO SAVEPOINT extraction_run")
@@ -368,161 +356,3 @@ def read_connection(database_path: str | Path) -> Iterator[sqlite3.Connection]:
 def database_path() -> Path:
     """Configured database location without filesystem side effects."""
     return Path(DATA_FILE_LOCATION) / "mlb_data.db"
-
-
-def validate_scope(league_name: str, execution_date: str) -> None:
-    """Reject unsupported leagues and non-ISO execution dates at entry points."""
-
-    if league_name not in LEAGUE_MAPPING:
-        raise ValueError(f"Unknown league: {league_name}")
-    if date.fromisoformat(execution_date).isoformat() != execution_date:
-        raise ValueError(f"Expected ISO date: {execution_date}")
-
-
-def ensure_treated_tables(conn: sqlite3.Connection) -> None:
-    """Create the reviewed treatment schema without committing."""
-
-    for table in ("treated_snapshots", *TREATED_TABLES.values()):
-        for statement in table_statements(table):
-            conn.execute(statement)
-
-
-def save_treated_category(
-    conn: sqlite3.Connection,
-    category: str,
-    league_name: str,
-    execution_date: str,
-    dataframe: pd.DataFrame,
-    layout: str,
-    origin: str = "treatment",
-) -> None:
-    """Replace one category and its completion record in the caller's transaction."""
-
-    validate_scope(league_name, execution_date)
-    metrics = metric_types(category)
-    if layout not in LAYOUTS or origin not in ("treatment", "csv"):
-        raise ValueError(f"Unsupported treatment layout/origin: {layout}/{origin}")
-    allowed = set(metrics) | {
-        "player_id",
-        "playername",
-        "team_id",
-        "position",
-        "source_checksum",
-        "source_row",
-        "source_index",
-        "source_values",
-    }
-    unknown = set(dataframe.columns) - allowed
-    if unknown:
-        raise ValueError(f"Unsupported {category} columns: {sorted(unknown)}")
-    required = ["team_id", "playername"]
-    if origin == "treatment":
-        required.append("player_id")
-    if category == "defender" and layout == "grouped":
-        required.append("position")
-    missing = set(required) - set(dataframe.columns)
-    if missing or dataframe[required].isna().any(axis=None):
-        raise ValueError(f"Incomplete {category} identity: {sorted(missing)}")
-    for field in ("team_id", "player_id"):
-        if field in dataframe:
-            values = pd.to_numeric(dataframe[field], errors="raise").dropna()
-            if ((values % 1) != 0).any() or (values <= 0).any():
-                raise ValueError(f"Invalid {category} {field}")
-    if dataframe.playername.eq("").any():
-        raise ValueError(f"Empty {category} player name")
-    keys = [
-        "team_id",
-        "player_id"
-        if "player_id" in dataframe and dataframe.player_id.notna().all()
-        else "playername",
-    ]
-    if category == "defender" and layout == "grouped":
-        keys.append("position")
-    if dataframe.duplicated(keys).any():
-        raise ValueError(f"Duplicate {category} identity: {keys}")
-    rows = dataframe.copy()
-    if origin == "treatment":
-        numeric = rows.columns.intersection(metrics)
-        rows[numeric] = rows[numeric].replace([np.inf, -np.inf], np.nan)
-    rows = rows.assign(
-        league_name=league_name, date=execution_date, layout=layout, origin=origin
-    )
-    table = TREATED_TABLES[category]
-    conn.execute(
-        f"DELETE FROM {table} WHERE league_name = ? AND date = ?",
-        (league_name, execution_date),
-    )
-    _insert_rows(conn, table, rows)
-    conn.execute(
-        """INSERT OR REPLACE INTO treated_snapshots
-        (league_name, date, category, layout, origin, row_count) VALUES (?, ?, ?, ?, ?, ?)""",
-        (league_name, execution_date, category, layout, origin, len(rows)),
-    )
-
-
-class SnapshotUnavailable(ValueError):
-    """A requested treatment snapshot has not completed or was invalidated."""
-
-
-def read_treated_stats(
-    conn: sqlite3.Connection,
-    category: str,
-    league_name: str,
-    execution_date: str,
-) -> pd.DataFrame:
-    """Read a completed category, including an intentionally empty snapshot."""
-
-    metric_types(category)
-    validate_scope(league_name, execution_date)
-    if not conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE name = 'treated_snapshots'"
-    ).fetchone():
-        raise SnapshotUnavailable(
-            f"Treatment unavailable: {league_name}/{execution_date}/{category}"
-        )
-    record = conn.execute(
-        """SELECT row_count FROM treated_snapshots
-        WHERE league_name = ? AND date = ? AND category = ?""",
-        (league_name, execution_date, category),
-    ).fetchone()
-    if record is None:
-        raise SnapshotUnavailable(
-            f"Treatment unavailable: {league_name}/{execution_date}/{category}"
-        )
-    frame = pd.read_sql_query(
-        f"""SELECT * FROM {TREATED_TABLES[category]}
-        WHERE league_name = ? AND date = ? ORDER BY
-        CASE position WHEN 'C' THEN 0 WHEN '1B' THEN 1 WHEN '2B' THEN 2
-            WHEN '3B' THEN 3 WHEN 'SS' THEN 4 WHEN 'LF' THEN 5 WHEN 'CF' THEN 6 WHEN 'RF' THEN 7 ELSE 8 END,
-        team_id, player_id, playername, source_row""",
-        conn,
-        params=(league_name, execution_date),
-    )
-    if len(frame) != record[0]:
-        raise ValueError(
-            f"Treatment row count mismatch: {league_name}/{execution_date}/{category}"
-        )
-    for column in metric_types(category):
-        frame[column] = pd.to_numeric(frame[column], errors="raise")
-    frame["player_id"] = pd.to_numeric(frame["player_id"], errors="raise")
-    return frame.drop(columns="row_id")
-
-
-def invalidate_treated_run(
-    conn: sqlite3.Connection, league_name: str, execution_date: str
-) -> None:
-    """Invalidate derived data when its source is replaced, without committing."""
-
-    tables = {
-        row[0]
-        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
-    }
-    for table in [
-        *TREATED_TABLES.values(),
-        "treated_snapshots",
-    ]:
-        if table in tables:
-            conn.execute(
-                f"DELETE FROM {table} WHERE league_name = ? AND date = ?",
-                (league_name, execution_date),
-            )

@@ -7,14 +7,14 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
 from matplotlib.ticker import MaxNLocator
 import pandas as pd
 from pydantic import BaseModel
 
-from mlb_airflow_data_pipeline.db_utils import (
-    database_path,
-    read_connection,
-    read_treated_stats,
+from mlb_airflow_data_pipeline.db_utils import database_path, read_connection
+from mlb_airflow_data_pipeline.treated_storage import (
+    read_treated_history,
     validate_scope,
 )
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
@@ -52,113 +52,114 @@ class PlotGenerator:
 
     def get_history(self) -> pd.DataFrame:
         """Read only the requested league/calendar year through the report date."""
-        start = self.execution_date[:4] + "-01-01"
+        start_date = self.execution_date[:4] + "-01-01"
         with read_connection(self.database) as conn:
             if self.input_parameters.dataset_name == "league_standings":
-                return pd.read_sql_query(
-                    """SELECT * FROM league_standings
-                    WHERE league_name = ? AND date BETWEEN ? AND ? ORDER BY date, team_id""",
+                history = pd.read_sql_query(
+                    """
+                    SELECT * FROM league_standings
+                    WHERE league_name = ? AND date BETWEEN ? AND ?
+                    ORDER BY date, team_id
+                    """,
                     conn,
-                    params=(self.league, start, self.execution_date),
-                )
-            has_snapshots = conn.execute(
-                "SELECT 1 FROM sqlite_master WHERE name='treated_snapshots'"
-            ).fetchone()
-            if not has_snapshots:
-                return pd.DataFrame()
-            dates = conn.execute(
-                """SELECT date FROM treated_snapshots
-                WHERE league_name = ? AND category = 'batter' AND date BETWEEN ? AND ? ORDER BY date""",
-                (self.league, start, self.execution_date),
-            ).fetchall()
-            frames = [
-                read_treated_stats(conn, "batter", self.league, day) for (day,) in dates
-            ]
-            return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame()
-
-    def get_time_series(self) -> dict[str, pd.DataFrame]:
-        """Keep IDs and layout in series identity; names serve as display labels."""
-        history = self.get_history()
-        stats = self.input_parameters.time_series_stats_is_int
-        if history.empty:
-            return {stat: pd.DataFrame() for stat in stats}
-        history = history.copy()
-        if self.input_parameters.dataset_name == "league_standings":
-            history["entity"] = history.team_id.astype(str)
-            latest = history.drop_duplicates("entity", keep="last")
-            labels = {
-                row.entity: f"{row['name']} [team {int(row.team_id)}]"
-                for _, row in latest.iterrows()
-            }
-            history["series"] = history.entity.map(labels)
-            history["win-total-ratio"] = history.w / (history.w + history.l)
-        else:
-            history["entity"] = history.apply(_player_identity, axis=1)
-            latest = history.drop_duplicates("entity", keep="last")
-            labels = {row.entity: _player_label(row) for _, row in latest.iterrows()}
-            history["series"] = history.entity.map(labels)
-        return {
-            stat: history.pivot(index="date", columns="series", values=stat)
-            .sort_index()
-            .rename_axis(index=None, columns=None)
-            for stat in stats
-        }
-
-    def get_time_series_stats_plots(self) -> None:
-        self.output_directory.mkdir(parents=True, exist_ok=True)
-        for stat, frame in self.get_time_series().items():
-            fig, ax = plt.subplots(figsize=(20, 6))
-            if frame.empty:
-                ax.text(
-                    0.5,
-                    0.5,
-                    "No saved history available",
-                    ha="center",
-                    transform=ax.transAxes,
+                    params=(self.league, start_date, self.execution_date),
                 )
             else:
-                frame.index = pd.to_datetime(frame.index)
-                ordered = sort_dataframe_by_largest_values(frame.ffill())
-                if self.input_parameters.n_best > 0:
-                    ordered = ordered.iloc[:, : self.input_parameters.n_best]
-                ordered.plot(
-                    ax=ax, style=".", linewidth=5, markersize=12, xlabel="", alpha=1
+                history = read_treated_history(
+                    conn, "batter", self.league, start_date, self.execution_date
                 )
-                ax.legend(
-                    loc="upper center",
-                    ncol=4,
-                    fontsize=12,
-                    bbox_to_anchor=(0.5, -0.2),
-                    frameon=False,
+        return history
+
+    def get_time_series(self) -> dict[str, pd.DataFrame]:
+        """Reshape history into one date-by-entity dataframe for each statistic."""
+        history = self.get_history()
+        series = {
+            stat: pd.DataFrame()
+            for stat in self.input_parameters.time_series_stats_is_int
+        }
+        if not history.empty:
+            history = _label_history(history, self.input_parameters.dataset_name)
+            for stat in series:
+                series[stat] = (
+                    history.pivot(index="date", columns="series", values=stat)
+                    .sort_index()
+                    .rename_axis(index=None, columns=None)
                 )
-            ax.set_ylabel(stat)
-            ax.yaxis.set_major_locator(
-                MaxNLocator(
-                    integer=self.input_parameters.time_series_stats_is_int[stat]
-                )
-            )
+        return series
+
+    def get_time_series_stats_plots(self) -> None:
+        """Render and save each statistic's chart."""
+        self.output_directory.mkdir(parents=True, exist_ok=True)
+        for stat, frame in self.get_time_series().items():
+            figure = self._create_figure(stat, frame)
             path = (
                 self.output_directory
                 / f"{self.league}_{self.execution_date}_time_series_{self.input_parameters.dataset_name}_{stat}.png"
             )
-            fig.savefig(path, bbox_inches="tight")
-            plt.close(fig)
+            figure.savefig(path, bbox_inches="tight")
+            plt.close(figure)
+
+    def _create_figure(self, stat: str, frame: pd.DataFrame) -> Figure:
+        """Plot ranked series, or an explicit message when history is empty."""
+        figure, axes = plt.subplots(figsize=(20, 6))
+        if frame.empty:
+            axes.text(
+                0.5,
+                0.5,
+                "No saved history available",
+                ha="center",
+                transform=axes.transAxes,
+            )
+        else:
+            frame = frame.copy()
+            frame.index = pd.to_datetime(frame.index)
+            ordered = sort_dataframe_by_largest_values(frame.ffill())
+            if self.input_parameters.n_best > 0:
+                ordered = ordered.iloc[:, : self.input_parameters.n_best]
+            ordered.plot(
+                ax=axes, style=".", linewidth=5, markersize=12, xlabel="", alpha=1
+            )
+            axes.legend(
+                loc="upper center",
+                ncol=4,
+                fontsize=12,
+                bbox_to_anchor=(0.5, -0.2),
+                frameon=False,
+            )
+        axes.set_ylabel(stat)
+        axes.yaxis.set_major_locator(
+            MaxNLocator(integer=self.input_parameters.time_series_stats_is_int[stat])
+        )
+        return figure
+
+
+def _label_history(history: pd.DataFrame, dataset_name: str) -> pd.DataFrame:
+    """Label each stable identity with its latest name in the ordered history."""
+    history = history.copy()
+    if dataset_name == "league_standings":
+        history["entity"] = history.team_id.astype(str)
+        history["win-total-ratio"] = history.w / (history.w + history.l)
+        label = _team_label
+    else:
+        history["entity"] = history.apply(_player_identity, axis=1)
+        label = _player_label
+
+    latest = history.drop_duplicates("entity", keep="last")
+    labels = {row.entity: label(row) for _, row in latest.iterrows()}
+    history["series"] = history.entity.map(labels)
+    return history
+
+
+def _team_label(row: pd.Series) -> str:
+    return f"{row['name']} [team {int(row.team_id)}]"
 
 
 def _player_identity(row: pd.Series) -> str:
-    player = (
-        f"id:{int(row.player_id)}"
-        if pd.notna(row.player_id)
-        else f"name:{row.playername}"
-    )
-    return f"{row.layout}:{int(row.team_id)}:{player}"
+    return f"{row.layout}:{int(row.team_id)}:{int(row.player_id)}"
 
 
 def _player_label(row: pd.Series) -> str:
-    identity = (
-        f"player {int(row.player_id)}" if pd.notna(row.player_id) else "historical name"
-    )
-    return f"{row.playername} [{identity}, team {int(row.team_id)}, {row.layout}]"
+    return f"{row.playername} [player {int(row.player_id)}, team {int(row.team_id)}, {row.layout}]"
 
 
 def sort_dataframe_by_largest_values(input_df: pd.DataFrame) -> pd.DataFrame:

@@ -12,11 +12,8 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     OUTPUT_FILE_LOCATION,
     LEAGUE_NAME,
 )
-from mlb_airflow_data_pipeline.db_utils import (
-    database_path,
-    read_connection,
-    read_treated_stats,
-)
+from mlb_airflow_data_pipeline.db_utils import database_path, read_connection
+from mlb_airflow_data_pipeline.treated_storage import read_treated_stats
 
 from mlb_airflow_data_pipeline.logging_setup import get_logger
 

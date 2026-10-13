@@ -8,6 +8,10 @@ import statsapi
 
 from mlb_airflow_data_pipeline import statsapi_extraction_script as extraction_script
 from mlb_airflow_data_pipeline.db_utils import create_connection, save_extraction_run
+from mlb_airflow_data_pipeline.treated_storage import (
+    read_treated_stats,
+    SnapshotUnavailable,
+)
 from mlb_airflow_data_pipeline.statsapi_extraction_script import (
     DataExtractor,
     TeamStats,
@@ -220,12 +224,13 @@ def test_roster_player_stats_reach_database(
     lookup_player.assert_not_called()
 
     treat_player_stats(str(database_path), "american_league", execution_date)
-    outputs = {
-        role: read_output(
-            database_path, role, "american_league", execution_date
-        ).set_index("playername")
-        for role in ("batter", "pitcher", "defender")
-    }
+    with sqlite3.connect(database_path) as conn:
+        outputs = {
+            role: read_treated_stats(
+                conn, role, "american_league", execution_date
+            ).set_index("playername")
+            for role in ("batter", "pitcher", "defender")
+        }
     assert outputs["batter"]["hits"].to_dict() == {
         "Player One": 101,
         "Player Three": 303,
@@ -237,6 +242,35 @@ def test_roster_player_stats_reach_database(
         "Player Five": 90,
     }
     assert outputs["defender"]["position"].to_dict() == {"Player One": "C"}
+
+    extraction_script.run_extraction(
+        str(database_path), "american_league", execution_date
+    )
+    with sqlite3.connect(database_path) as conn:
+        for role in outputs:
+            with pytest.raises(SnapshotUnavailable):
+                read_treated_stats(conn, role, "american_league", execution_date)
+
+
+def test_failed_invalidation_rolls_back_extraction(
+    tmp_path: Path, league_api: tuple[Mock, Mock, Mock, Mock]
+) -> None:
+    database = str(tmp_path / "mlb_data.db")
+    league, day = "american_league", "2026-09-26"
+    extraction_script.run_extraction(database, league, day)
+    treat_player_stats(database, league, day)
+    with sqlite3.connect(database) as conn:
+        conn.execute(
+            "CREATE TRIGGER reject_invalidation BEFORE DELETE ON batter_stats "
+            "BEGIN SELECT RAISE(ABORT, 'invalidation failed'); END"
+        )
+        before = list(conn.iterdump())
+    standings, _, _, _ = league_api
+    standings.return_value[200]["teams"][0]["name"] = "Changed"
+    with pytest.raises(sqlite3.Error, match="invalidation failed"):
+        extraction_script.run_extraction(database, league, day)
+    with sqlite3.connect(database) as conn:
+        assert list(conn.iterdump()) == before
 
 
 @pytest.mark.parametrize("error_type", [ConnectionError, TypeError])
@@ -281,12 +315,3 @@ def test_data_extractor_creates_valid_dataframes() -> None:
     assert len(standings_df) > 0
     assert "team_id" in standings_df.columns
     assert "name" in standings_df.columns
-
-
-def read_output(
-    database_path: Path, category: str, league: str, date: str
-) -> pd.DataFrame:
-    from mlb_airflow_data_pipeline.db_utils import read_treated_stats
-
-    with sqlite3.connect(database_path) as conn:
-        return read_treated_stats(conn, category, league, date)

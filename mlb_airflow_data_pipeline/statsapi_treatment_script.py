@@ -10,10 +10,12 @@ from pydantic import BaseModel
 from mlb_airflow_data_pipeline.db_utils import (
     read_connection,
     database_path,
+    read_player_stats,
+)
+from mlb_airflow_data_pipeline.treated_storage import (
     ensure_treated_tables,
     save_treated_category,
     validate_scope,
-    read_player_stats,
 )
 from mlb_airflow_data_pipeline.statsapi_extraction_script import DATE_TIME_EXECUTION
 from mlb_airflow_data_pipeline.statsapi_feature_utils import (

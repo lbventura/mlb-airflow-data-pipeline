@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 from mlb_airflow_data_pipeline.db_utils import save_extraction_run
+from mlb_airflow_data_pipeline.treated_storage import invalidate_treated_run
 
 LEAGUE = "american_league"
 DATE = "2026-10-11"
@@ -36,6 +37,7 @@ def extract(
     database: Path, players: pd.DataFrame, league: str = LEAGUE, date: str = DATE
 ) -> None:
     with sqlite3.connect(database) as conn:
+        conn.execute("BEGIN IMMEDIATE")
         save_extraction_run(
             conn,
             league,
@@ -45,3 +47,4 @@ def extract(
             ),
             players,
         )
+        invalidate_treated_run(conn, league, date)

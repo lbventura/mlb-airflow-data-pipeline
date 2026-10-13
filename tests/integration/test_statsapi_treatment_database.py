@@ -5,11 +5,8 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from mlb_airflow_data_pipeline.db_utils import (
-    create_connection,
-    read_treated_stats,
-    save_extraction_run,
-)
+from mlb_airflow_data_pipeline.db_utils import create_connection, save_extraction_run
+from mlb_airflow_data_pipeline.treated_storage import read_treated_stats
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     BATTING_STATS,
     PITCHING_STATS,
