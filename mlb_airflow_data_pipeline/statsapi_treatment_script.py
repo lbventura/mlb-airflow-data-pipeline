@@ -48,7 +48,6 @@ from mlb_airflow_data_pipeline.treated_schema import (
     DEFENDER_MEAN_STATS,
 )
 
-# Initialize structured logger
 logger = get_logger("statsapi_treatment")
 
 
@@ -336,14 +335,14 @@ def _read_treatment_snapshot(
 
 
 def treat_player_stats(
-    database_path: str | Path,
+    database_path: Path,
     league_name: str,
     execution_date: str,
 ) -> dict[str, int]:
     """Transform one source snapshot and publish all three categories atomically."""
     validate_scope(league_name, execution_date)
     paths = TreatmentDataPaths(
-        database_path=Path(database_path),
+        database_path=database_path,
         league_name=league_name,
         execution_date=execution_date,
     )

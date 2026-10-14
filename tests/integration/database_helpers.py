@@ -1,5 +1,3 @@
-"""SQLite source fixtures and state used by integration tests."""
-
 import sqlite3
 from pathlib import Path
 

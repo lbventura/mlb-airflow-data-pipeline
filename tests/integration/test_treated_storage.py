@@ -1,5 +1,3 @@
-"""Treated publication, rollback, invalidation, and source preservation."""
-
 from pathlib import Path
 import sqlite3
 
@@ -22,8 +20,8 @@ def test_retry_preserves_other_leagues(
     published_database: Path, players: pd.DataFrame
 ) -> None:
     extract(published_database, players, "national_league")
-    treatment.treat_player_stats(str(published_database), "national_league", DATE)
-    assert treatment.treat_player_stats(str(published_database), LEAGUE, DATE) == COUNTS
+    treatment.treat_player_stats(published_database, "national_league", DATE)
+    assert treatment.treat_player_stats(published_database, LEAGUE, DATE) == COUNTS
     with sqlite3.connect(published_database) as conn:
         for league in (LEAGUE, "national_league"):
             for role, count in COUNTS.items():
@@ -55,7 +53,7 @@ def test_completed_empty_roles_differ_from_missing_snapshot(
         published_database, players.assign(hitting_atBats=0, pitching_gamesPlayed=0)
     )
     assert treatment.treat_player_stats(
-        str(published_database), LEAGUE, DATE
+        published_database, LEAGUE, DATE
     ) == dict.fromkeys(COUNTS, 0)
     with sqlite3.connect(published_database) as conn:
         for role in COUNTS:
@@ -74,7 +72,7 @@ def test_failed_publication_restores_all_categories(
         )
         before = list(conn.iterdump())
     with pytest.raises(sqlite3.Error, match="rejected role"):
-        treatment.treat_player_stats(str(published_database), LEAGUE, DATE)
+        treatment.treat_player_stats(published_database, LEAGUE, DATE)
     with sqlite3.connect(published_database) as conn:
         assert list(conn.iterdump()) == before
 
@@ -93,7 +91,7 @@ def test_initial_publication_failure_rolls_back_schema(
     with sqlite3.connect(database) as conn:
         before = list(conn.iterdump())
     with pytest.raises(RuntimeError, match="final category"):
-        treatment.treat_player_stats(str(database), LEAGUE, DATE)
+        treatment.treat_player_stats(database, LEAGUE, DATE)
     with sqlite3.connect(database) as conn:
         assert list(conn.iterdump()) == before
 
@@ -158,7 +156,7 @@ def test_treatment_locks_source_until_publication(
     monkeypatch.setattr(
         treatment, "_read_treatment_snapshot", read_while_extraction_competes
     )
-    treatment.treat_player_stats(str(database), LEAGUE, DATE)
+    treatment.treat_player_stats(database, LEAGUE, DATE)
     with sqlite3.connect(database) as conn:
         assert set(read_treated_stats(conn, "batter", LEAGUE, DATE).playername) == {
             "Same Name"
@@ -168,7 +166,7 @@ def test_treatment_locks_source_until_publication(
 def test_missing_database_is_not_created(tmp_path: Path) -> None:
     missing = tmp_path / "missing.db"
     with pytest.raises(sqlite3.OperationalError):
-        treatment.treat_player_stats(str(missing), LEAGUE, DATE)
+        treatment.treat_player_stats(missing, LEAGUE, DATE)
     with pytest.raises(sqlite3.OperationalError):
         with read_connection(str(missing)):
             pass
@@ -178,13 +176,14 @@ def test_missing_database_is_not_created(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("field", "value", "error"),
     [
-        pytest.param("player_id", None, ValueError, id="missing-player"),
+        pytest.param("player_id", None, sqlite3.IntegrityError, id="missing-player"),
         pytest.param("player_id", 101.5, ValueError, id="fractional-player"),
-        pytest.param("team_id", None, ValueError, id="missing-team"),
+        pytest.param("team_id", None, sqlite3.IntegrityError, id="missing-team"),
         pytest.param("player_id", 0, ValueError, id="zero-player"),
         pytest.param("team_id", -1, ValueError, id="negative-team"),
         pytest.param("playername", "", ValueError, id="empty-name"),
-        pytest.param("position", None, ValueError, id="missing-position"),
+        pytest.param("playername", None, sqlite3.IntegrityError, id="missing-name"),
+        pytest.param("position", None, sqlite3.IntegrityError, id="missing-position"),
         pytest.param(
             "position", "P", sqlite3.IntegrityError, id="unsupported-position"
         ),
@@ -207,6 +206,24 @@ def test_invalid_identity_preserves_snapshot(
         )
 
 
+@pytest.mark.parametrize("empty", [False, True], ids=["populated", "empty"])
+def test_invalid_layout_preserves_snapshot(
+    published_database: Path, empty: bool
+) -> None:
+    with sqlite3.connect(published_database) as conn:
+        original = read_treated_stats(conn, "batter", LEAGUE, DATE)
+        replacement = original.drop(columns=["league_name", "date", "layout"])
+        if empty:
+            replacement = replacement.iloc[:0]
+        with pytest.raises(sqlite3.IntegrityError, match="layout"), conn:
+            save_treated_category(
+                conn, "batter", LEAGUE, DATE, replacement, "unsupported"
+            )
+        pd.testing.assert_frame_equal(
+            read_treated_stats(conn, "batter", LEAGUE, DATE), original
+        )
+
+
 @pytest.mark.parametrize("layout", ["grouped", "legacy_unprefixed"])
 def test_treatment_preserves_extracted_schemas_and_rows(
     tmp_path: Path, players: pd.DataFrame, layout: str
@@ -224,7 +241,7 @@ def test_treatment_preserves_extracted_schemas_and_rows(
         for table in ("player_stats", "league_standings"):
             conn.execute(f"CREATE TABLE legacy_{table} AS SELECT * FROM {table}")
         before = extracted_tables(conn)
-    treatment.treat_player_stats(str(database), LEAGUE, DATE)
+    treatment.treat_player_stats(database, LEAGUE, DATE)
     with sqlite3.connect(database) as conn:
         assert extracted_tables(conn) == before
         assert conn.execute(

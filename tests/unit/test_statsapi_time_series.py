@@ -1,5 +1,3 @@
-"""Ranking and rendering behavior for time-series charts."""
-
 from pathlib import Path
 
 from matplotlib.figure import Figure

@@ -1,5 +1,3 @@
-"""Database-only analysis and time-series charts."""
-
 from pathlib import Path
 
 from mlb_airflow_data_pipeline.statsapi_analysis_script import create_analysis_plots

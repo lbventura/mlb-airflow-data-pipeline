@@ -1,5 +1,3 @@
-"""League/date history, identity, and time-series charts from SQLite."""
-
 from pathlib import Path
 import sqlite3
 
@@ -28,7 +26,7 @@ def test_history_bounds_names_and_layout_identity(
             ),
             date=date,
         )
-        treatment.treat_player_stats(str(database), LEAGUE, date)
+        treatment.treat_player_stats(database, LEAGUE, date)
     generator = PlotGenerator(batter_input_parameters, str(database), LEAGUE, DATE)
     frame = generator.get_time_series()["homeRuns"]
     assert frame.index.tolist() == ["2026-10-01", DATE]
@@ -134,10 +132,22 @@ def test_legacy_and_grouped_history_keep_distinct_series(
     assert frame.shape == (2, 4)
     legacy = frame.filter(like="legacy_unprefixed")
     grouped = frame.filter(like="grouped")
-    assert legacy.loc["2026-10-01"].tolist() == [3, 4]
-    assert legacy.loc[DATE].isna().all()
-    assert grouped.loc["2026-10-01"].isna().all()
-    assert grouped.loc[DATE].tolist() == [1, 1]
+    pd.testing.assert_frame_equal(
+        legacy,
+        pd.DataFrame(
+            [[3.0, 4.0], [float("nan"), float("nan")]],
+            index=["2026-10-01", DATE],
+            columns=legacy.columns,
+        ),
+    )
+    pd.testing.assert_frame_equal(
+        grouped,
+        pd.DataFrame(
+            [[float("nan"), float("nan")], [1.0, 1.0]],
+            index=["2026-10-01", DATE],
+            columns=grouped.columns,
+        ),
+    )
 
 
 def test_history_omits_invalidated_treatment(

@@ -1,5 +1,3 @@
-"""Publish and read treated snapshots within the caller's transaction."""
-
 from datetime import date
 import sqlite3
 
@@ -9,7 +7,6 @@ import pandas as pd
 from mlb_airflow_data_pipeline.db_utils import insert_rows
 from mlb_airflow_data_pipeline.statsapi_parameters_script import LEAGUE_MAPPING
 from mlb_airflow_data_pipeline.treated_schema import (
-    LAYOUTS,
     TREATED_TABLES,
     metric_types,
     table_statements,
@@ -150,9 +147,6 @@ def _prepare_treated_rows(
 ) -> pd.DataFrame:
     """Validate treatment output and copy it with infinite metrics replaced by NULL."""
     metrics = metric_types(category)
-    if layout not in LAYOUTS:
-        raise ValueError(f"Unsupported treatment layout: {layout}")
-
     allowed_columns = set(metrics) | {"player_id", "playername", "team_id", "position"}
     unknown_columns = set(dataframe.columns) - allowed_columns
     if unknown_columns:
@@ -175,11 +169,8 @@ def _validate_player_identity(rows: pd.DataFrame, category: str, layout: str) ->
     missing_columns = set(required_columns) - set(rows.columns)
     if missing_columns:
         raise ValueError(f"Incomplete {category} identity: {sorted(missing_columns)}")
-    if rows[required_columns].isna().any(axis=None):
-        raise ValueError(f"Incomplete {category} identity: null values")
-
     for column in ("team_id", "player_id"):
-        values = pd.to_numeric(rows[column], errors="raise")
+        values = pd.to_numeric(rows[column].dropna(), errors="raise")
         if ((values % 1) != 0).any() or (values <= 0).any():
             raise ValueError(f"Invalid {category} {column}")
     if rows.playername.eq("").any():

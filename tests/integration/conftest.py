@@ -74,7 +74,7 @@ def database(tmp_path: Path, players: pd.DataFrame) -> Path:
 
 @pytest.fixture
 def published_database(database: Path) -> Path:
-    assert treatment.treat_player_stats(str(database), LEAGUE, DATE) == COUNTS
+    assert treatment.treat_player_stats(database, LEAGUE, DATE) == COUNTS
     return database
 
 
@@ -86,7 +86,7 @@ def report_database(database: Path, players: pd.DataFrame) -> Path:
             players if league == LEAGUE else players.assign(team_id=119),
             league,
         )
-        treatment.treat_player_stats(str(database), league, DATE)
+        treatment.treat_player_stats(database, league, DATE)
     extract(database, players, date="2026-10-01")
-    treatment.treat_player_stats(str(database), LEAGUE, "2026-10-01")
+    treatment.treat_player_stats(database, LEAGUE, "2026-10-01")
     return database

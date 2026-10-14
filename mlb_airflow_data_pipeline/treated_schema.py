@@ -1,4 +1,4 @@
-"""SQLite schema for treated statistics; extraction tables are not defined here.
+"""SQLite schema for treated statistics.
 
 batter_stats and pitcher_stats have one row per league/date/team/player.
 defender_stats adds position to that identity for grouped statistics.
@@ -65,7 +65,6 @@ RATE_STATS = {
     "rangeFactorPer9Inn",
     "rangeFactorPerGame",
 }
-LAYOUTS = ("grouped", "legacy_unprefixed")
 TREATED_TABLES = {
     "batter": "batter_stats",
     "pitcher": "pitcher_stats",

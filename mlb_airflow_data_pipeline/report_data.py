@@ -1,5 +1,3 @@
-"""Scoped report inputs and comparisons with explicit player identity."""
-
 from datetime import date, timedelta
 import os
 import sqlite3
@@ -51,11 +49,11 @@ def batter_difference(
     difference = current[[*keys, "playername", metric]].merge(
         previous[[*keys, metric]],
         on=keys,
-        suffixes=("TW", "LW"),
+        suffixes=("_current", "_previous"),
         validate="one_to_one",
     )
     difference[metric + "difference"] = (
-        difference[metric + "TW"] - difference[metric + "LW"]
+        difference[metric + "_current"] - difference[metric + "_previous"]
     )
     return difference
 

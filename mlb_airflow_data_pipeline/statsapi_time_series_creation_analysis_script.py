@@ -1,11 +1,7 @@
-"""Generate ordered, identity-preserving time series from SQLite snapshots."""
-
 import argparse
 from pathlib import Path
 
 import matplotlib
-
-matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.ticker import MaxNLocator
@@ -22,6 +18,8 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     LEAGUE_NAME,
     OUTPUT_FILE_LOCATION,
 )
+
+matplotlib.use("Agg")
 
 
 class PlotterInputRepresentation(BaseModel):

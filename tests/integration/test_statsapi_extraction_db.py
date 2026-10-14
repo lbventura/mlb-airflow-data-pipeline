@@ -223,7 +223,7 @@ def test_roster_player_stats_reach_database(
     ]
     lookup_player.assert_not_called()
 
-    treat_player_stats(str(database_path), "american_league", execution_date)
+    treat_player_stats(database_path, "american_league", execution_date)
     with sqlite3.connect(database_path) as conn:
         outputs = {
             role: read_treated_stats(
@@ -258,7 +258,7 @@ def test_failed_invalidation_rolls_back_extraction(
     database = str(tmp_path / "mlb_data.db")
     league, day = "american_league", "2026-09-26"
     extraction_script.run_extraction(database, league, day)
-    treat_player_stats(database, league, day)
+    treat_player_stats(Path(database), league, day)
     with sqlite3.connect(database) as conn:
         conn.execute(
             "CREATE TRIGGER reject_invalidation BEFORE DELETE ON batter_stats "

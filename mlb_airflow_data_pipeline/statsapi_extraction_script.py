@@ -32,7 +32,6 @@ LEAGUE_STANDINGS_FILE_NAME = f"{OUTPUT_DETAILS}_league_standings_df.csv"
 
 PLAYER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_full_player_stats_df.csv"
 
-# Initialize structured logger
 logger = get_logger("statsapi_extraction", league=LEAGUE_NAME)
 
 
@@ -292,6 +291,7 @@ def run_extraction(database_path: str, league_name: str, execution_date: str) ->
             data_extractor.league_standings,
             player_stats,
         )
+        # A same-day rerun must not leave reports reading the old source's treatment.
         invalidate_treated_run(conn, league_name, execution_date)
     logger.info(
         "league_standings_saved", database_path=database_path, table="league_standings"

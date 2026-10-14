@@ -105,7 +105,7 @@ def test_grouped_stats_reach_role_specific_database_outputs(
     assert defender.set_index("position").loc["C", "catcherERA"] == 3.25
     assert pd.isna(defender.set_index("position").loc["1B", "catcherERA"])
 
-    treat_player_stats(str(database_path), "american_league", "2026-10-01")
+    treat_player_stats(database_path, "american_league", "2026-10-01")
     with create_connection(str(database_path)) as conn:
         outputs = {
             role: read_treated_stats(conn, role, "american_league", "2026-10-01")
@@ -195,7 +195,7 @@ def test_grouped_snapshot_without_pitching_or_defending_writes_empty_role_output
             pd.DataFrame({"team_id": [147]}),
             players,
         )
-    treat_player_stats(str(database_path), "american_league", "2026-10-01")
+    treat_player_stats(database_path, "american_league", "2026-10-01")
     with create_connection(str(database_path)) as conn:
         for role in ("pitcher", "defender"):
             result = read_treated_stats(conn, role, "american_league", "2026-10-01")
@@ -231,7 +231,7 @@ def test_treatment_reads_scoped_player_stats_and_writes_outputs(
             player_stats.assign(playername="Other date"),
         )
 
-    treat_player_stats(str(database_path), league_name, execution_date)
+    treat_player_stats(database_path, league_name, execution_date)
 
     with create_connection(str(database_path)) as conn:
         for category in ("batter", "pitcher", "defender"):

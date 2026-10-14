@@ -17,7 +17,6 @@ from mlb_airflow_data_pipeline.treated_storage import read_treated_stats
 
 from mlb_airflow_data_pipeline.logging_setup import get_logger
 
-# Initialize structured logger
 logger = get_logger("statsapi_analysis")
 
 
@@ -63,7 +62,6 @@ class DataPlotter:
             )
 
 
-# helper functions
 def scatter_plot(input_df: pd.DataFrame, variable_pair: tuple[str, str]):
     """Create scatter plot for two variables"""
 

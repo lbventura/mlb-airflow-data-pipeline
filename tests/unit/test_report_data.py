@@ -1,5 +1,3 @@
-"""Report calculations and snapshot selection, independent of Jupyter and SQLite."""
-
 from datetime import date
 from unittest.mock import Mock, call
 
@@ -33,6 +31,8 @@ def test_difference_matches_ids_and_teams_and_keeps_current_name(layout: str) ->
         102: 10,
     }
     assert result.playername.tolist() == ["Same Name", "Same Name"]
+    assert result.hits_current.tolist() == [10, 30]
+    assert result.hits_previous.tolist() == [5, 20]
 
 
 @pytest.mark.parametrize(
