@@ -344,10 +344,10 @@ def get_database_path() -> str:
 
 
 @contextmanager
-def read_connection(database_path: str | Path) -> Generator[sqlite3.Connection]:
+def read_connection(database_path: Path) -> Generator[sqlite3.Connection]:
     """Open an existing database without creating or modifying it."""
     with closing(
-        sqlite3.connect(Path(database_path).resolve().as_uri() + "?mode=ro", uri=True)
+        sqlite3.connect(database_path.resolve().as_uri() + "?mode=ro", uri=True)
     ) as conn:
         conn.execute("BEGIN")
         yield conn

@@ -32,7 +32,7 @@ class PlotGenerator:
     def __init__(
         self,
         input_parameters: PlotterInputRepresentation,
-        database: str | Path,
+        database: Path,
         league: str,
         execution_date: str,
         output_directory: str = OUTPUT_FILE_LOCATION,

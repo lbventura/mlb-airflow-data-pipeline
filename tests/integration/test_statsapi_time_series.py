@@ -27,7 +27,7 @@ def test_history_bounds_names_and_layout_identity(
             date=date,
         )
         treatment.treat_player_stats(database, LEAGUE, date)
-    generator = PlotGenerator(batter_input_parameters, str(database), LEAGUE, DATE)
+    generator = PlotGenerator(batter_input_parameters, database, LEAGUE, DATE)
     frame = generator.get_time_series()["homeRuns"]
     assert frame.index.tolist() == ["2026-10-01", DATE]
     assert len(frame.columns) == 2
@@ -40,7 +40,7 @@ def test_empty_history_generates_explicit_empty_charts(
 ) -> None:
     generator = PlotGenerator(
         batter_input_parameters,
-        str(database),
+        database,
         LEAGUE,
         DATE,
         str(tmp_path / "empty-plots"),

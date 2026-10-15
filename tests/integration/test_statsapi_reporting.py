@@ -12,11 +12,9 @@ from .database_helpers import DATE, LEAGUE
 
 def test_database_only_charts(report_database: Path, tmp_path: Path) -> None:
     output = tmp_path / "output"
-    create_analysis_plots(str(report_database), LEAGUE, DATE, str(output))
+    create_analysis_plots(report_database, LEAGUE, DATE, str(output))
     for config in (league_input_parameters, batter_input_parameters):
-        generator = PlotGenerator(
-            config, str(report_database), LEAGUE, DATE, str(output)
-        )
+        generator = PlotGenerator(config, report_database, LEAGUE, DATE, str(output))
         generator.get_time_series_stats_plots()
     frame = generator.get_time_series()["homeRuns"]
     assert frame.shape == (2, 2)

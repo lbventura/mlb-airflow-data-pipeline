@@ -23,7 +23,7 @@ logger = get_logger("statsapi_analysis")
 class DataPlotter:
     def __init__(
         self,
-        database_path: str | Path,
+        database_path: Path,
         league_name: str,
         execution_date: str,
         category: str,
@@ -107,7 +107,7 @@ pitcher_tuple_variable_list = [
 
 
 def create_analysis_plots(
-    database: str | Path,
+    database: Path,
     league: str,
     execution_date: str,
     output_directory: str = OUTPUT_FILE_LOCATION,

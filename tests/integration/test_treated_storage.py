@@ -168,7 +168,7 @@ def test_missing_database_is_not_created(tmp_path: Path) -> None:
     with pytest.raises(sqlite3.OperationalError):
         treatment.treat_player_stats(missing, LEAGUE, DATE)
     with pytest.raises(sqlite3.OperationalError):
-        with read_connection(str(missing)):
+        with read_connection(missing):
             pass
     assert not missing.exists()
 
@@ -190,7 +190,10 @@ def test_missing_database_is_not_created(tmp_path: Path) -> None:
     ],
 )
 def test_invalid_identity_preserves_snapshot(
-    published_database: Path, field: str, value: object, error: type[Exception]
+    published_database: Path,
+    field: str,
+    value: str | int | float | None,
+    error: type[Exception],
 ) -> None:
     with sqlite3.connect(published_database) as conn:
         original = read_treated_stats(conn, "defender", LEAGUE, DATE)
