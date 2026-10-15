@@ -1,13 +1,63 @@
+from pathlib import Path
+
 import pandas as pd
 import pytest
 
 from mlb_airflow_data_pipeline.statsapi_treatment_script import (
+    DataTreater,
+    DataTreaterInputRepresentation,
+    TreatmentDataPaths,
     _convert_numeric_columns,
     _fielding_subset,
     _grouped_subset,
     defender_input_data_repr,
     filter_data,
 )
+
+
+def test_treatment_filters_before_applying_configured_transformations(
+    tmp_path: Path,
+) -> None:
+    source = pd.DataFrame({"hits": [9, 10, 20], "unused": [1, 2, 3]})
+    original = source.copy()
+
+    def double_hits(frame: pd.DataFrame) -> pd.DataFrame:
+        return frame.assign(doubled_hits=frame.hits * 2)
+
+    def normalize(frame: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+        return frame.assign(
+            **{
+                f"{column}_share": frame[column] / frame[column].sum()
+                for column in columns
+            }
+        )
+
+    config = DataTreaterInputRepresentation(
+        subset_columns=["hits"],
+        filter_conditions_dict={"hits": 10},
+        transformation_dict={double_hits: None, normalize: ["doubled_hits"]},
+        stats_group="hitting",
+    )
+    paths = TreatmentDataPaths(
+        database_path=tmp_path / "unused.db",
+        league_name="american_league",
+        execution_date="2026-10-14",
+    )
+
+    result = DataTreater(paths, config, source).get_output_data()
+
+    pd.testing.assert_frame_equal(
+        result,
+        pd.DataFrame(
+            {
+                "hits": [10, 20],
+                "doubled_hits": [20, 40],
+                "doubled_hits_share": [1 / 3, 2 / 3],
+            },
+            index=[1, 2],
+        ),
+    )
+    pd.testing.assert_frame_equal(source, original)
 
 
 def test_convert_known_metrics_preserves_numbers_and_missing_rates() -> None:

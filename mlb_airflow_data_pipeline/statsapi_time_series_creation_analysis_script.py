@@ -1,4 +1,5 @@
 import argparse
+from dataclasses import dataclass
 from pathlib import Path
 
 import matplotlib
@@ -6,7 +7,6 @@ import matplotlib.pyplot as plt
 from matplotlib.figure import Figure
 from matplotlib.ticker import MaxNLocator
 import pandas as pd
-from pydantic import BaseModel
 
 from mlb_airflow_data_pipeline.db_utils import database_path, read_connection
 from mlb_airflow_data_pipeline.treated_storage import (
@@ -22,7 +22,8 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
 matplotlib.use("Agg")
 
 
-class PlotterInputRepresentation(BaseModel):
+@dataclass(kw_only=True)
+class PlotterInputRepresentation:
     dataset_name: str
     time_series_stats_is_int: dict[str, bool]
     n_best: int
