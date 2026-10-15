@@ -26,12 +26,6 @@ from mlb_airflow_data_pipeline.treated_storage import invalidate_treated_run
 
 DATE_TIME_EXECUTION = datetime.today().strftime("%Y-%m-%d")
 
-OUTPUT_DETAILS = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}"
-
-LEAGUE_STANDINGS_FILE_NAME = f"{OUTPUT_DETAILS}_league_standings_df.csv"
-
-PLAYER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_full_player_stats_df.csv"
-
 logger = get_logger("statsapi_extraction", league=LEAGUE_NAME)
 
 
@@ -239,7 +233,9 @@ class DataExtractor:
 
         league_number = LEAGUE_MAPPING[self.league_name]
         league_list = []
-        standings = statsapi.standings_data(league_number, season=SEASON_YEAR)
+        standings = statsapi.standings_data(
+            league_number, season=SEASON_YEAR
+        )  # TODO: check if `league_number` type should be adjusted to str
 
         for division in LEAGUE_DIVISION_MAPPING[league_number]:
             division_results: pd.DataFrame = pd.DataFrame(

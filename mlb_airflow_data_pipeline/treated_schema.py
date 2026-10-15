@@ -70,7 +70,6 @@ TREATED_TABLES = {
     "pitcher": "pitcher_stats",
     "defender": "defender_stats",
 }
-CATEGORIES = tuple(TREATED_TABLES)
 
 IDENTITY_COLUMNS = {
     "row_id": "INTEGER PRIMARY KEY",
