@@ -80,7 +80,7 @@ def test_grouped_stats_reach_role_specific_database_outputs(
             )
 
     paths = TreatmentDataPaths(
-        database_path=str(database_path),
+        database_path=database_path,
         league_name="american_league",
         execution_date="2026-10-01",
     )
@@ -158,7 +158,7 @@ def test_legacy_snapshot_stays_readable_after_grouped_columns_are_added(
         save_extraction_run(conn, "american_league", "2026-10-01", standings, grouped)
 
     paths = TreatmentDataPaths(
-        database_path=str(database_path),
+        database_path=database_path,
         league_name="american_league",
         execution_date="2026-09-30",
     )

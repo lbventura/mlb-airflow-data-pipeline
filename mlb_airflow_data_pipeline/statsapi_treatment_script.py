@@ -1,11 +1,12 @@
 import argparse
+from collections.abc import Callable
 from contextlib import closing
+from dataclasses import dataclass
 from pathlib import Path
 import sqlite3
 
 import numpy as np
 import pandas as pd
-from pydantic import BaseModel
 
 from mlb_airflow_data_pipeline.db_utils import (
     read_connection,
@@ -54,7 +55,8 @@ logger = get_logger("statsapi_treatment")
 DATA_FILTER_THRESHOLD = 0.6
 
 
-class TreatmentDataPaths(BaseModel):
+@dataclass(kw_only=True)
+class TreatmentDataPaths:
     """SQLite source and league/date selection for treatment."""
 
     database_path: Path
@@ -62,10 +64,11 @@ class TreatmentDataPaths(BaseModel):
     execution_date: str
 
 
-class DataTreaterInputRepresentation(BaseModel):
-    subset_columns: list
-    filter_conditions_dict: dict
-    transformation_dict: dict
+@dataclass(kw_only=True)
+class DataTreaterInputRepresentation:
+    subset_columns: list[str]
+    filter_conditions_dict: dict[str, int | float]
+    transformation_dict: dict[Callable[..., pd.DataFrame], list[str] | None]
     stats_group: str
 
 
@@ -255,10 +258,13 @@ def filter_data(input_df: pd.DataFrame, conditions_dict: dict) -> pd.DataFrame:
 
 # setting up information for the batter extraction
 batting_stats_list = PLAYER_INFORMATION + BATTING_STATS
-batter_filter_conditions_dict = {"plateAppearances": 100, "atBats": 50}
+batter_filter_conditions_dict: dict[str, int | float] = {
+    "plateAppearances": 100,
+    "atBats": 50,
+}
 
 
-batter_transformation_dict = {
+batter_transformation_dict: dict[Callable[..., pd.DataFrame], list[str] | None] = {
     create_babip: None,
     create_dif_strike_outs_base_on_balls: None,
     create_plate_appearance_normalization: BATTER_PLATE_STATS,
@@ -274,10 +280,13 @@ batter_input_data_repr = DataTreaterInputRepresentation(
 
 # same thing for pitchers
 pitching_stats_list = PLAYER_INFORMATION + PITCHING_STATS
-pitcher_filter_conditions_dict = {"gamesPlayed": 5, "inningsPitched": 15}
+pitcher_filter_conditions_dict: dict[str, int | float] = {
+    "gamesPlayed": 5,
+    "inningsPitched": 15,
+}
 
 
-pitcher_transformation_dict = {
+pitcher_transformation_dict: dict[Callable[..., pd.DataFrame], list[str] | None] = {
     create_innings_pitched_normalization: PITCHER_INNINGS_STATS,
     create_mean_normalization: PITCHER_MEAN_STATS,
 }
@@ -292,13 +301,13 @@ pitcher_input_data_repr = DataTreaterInputRepresentation(
 # same thing for defenders
 defending_stats_list = PLAYER_INFORMATION + DEFENSIVE_STATS
 
-defender_filter_conditions_dict = {
+defender_filter_conditions_dict: dict[str, int | float] = {
     "plateAppearances": 100,
     "atBats": 50,
 }  # this likely needs to be augmented in light of the analysis for batters
 
 
-defender_transformation_dict = {
+defender_transformation_dict: dict[Callable[..., pd.DataFrame], list[str] | None] = {
     create_mean_normalization: DEFENDER_MEAN_STATS,
 }
 
