@@ -1,15 +1,21 @@
 import argparse
+from contextlib import closing
 from pathlib import Path
-from typing import Optional
+import sqlite3
 
 import numpy as np
 import pandas as pd
 from pydantic import BaseModel
 
 from mlb_airflow_data_pipeline.db_utils import (
-    create_connection,
-    get_database_path,
+    read_connection,
+    database_path,
     read_player_stats,
+)
+from mlb_airflow_data_pipeline.treated_storage import (
+    ensure_treated_tables,
+    save_treated_category,
+    validate_scope,
 )
 from mlb_airflow_data_pipeline.statsapi_extraction_script import DATE_TIME_EXECUTION
 from mlb_airflow_data_pipeline.statsapi_feature_utils import (
@@ -22,7 +28,6 @@ from mlb_airflow_data_pipeline.statsapi_feature_utils import (
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     BATTING_STATS,
     BATTING_SOURCE_STATS,
-    DATA_FILE_LOCATION,
     DEFENDER_POSITIONS,
     DEFENSIVE_STATS,
     FIELDING_SOURCE_STATS,
@@ -35,29 +40,26 @@ from mlb_airflow_data_pipeline.statsapi_parameters_script import (
 
 from mlb_airflow_data_pipeline.logging_setup import get_logger
 
-# Initialize structured logger
-logger = get_logger("statsapi_treatment", league=LEAGUE_NAME)
+from mlb_airflow_data_pipeline.treated_schema import (
+    BATTER_PLATE_STATS,
+    BATTER_MEAN_STATS,
+    PITCHER_INNINGS_STATS,
+    PITCHER_MEAN_STATS,
+    DEFENDER_MEAN_STATS,
+)
+
+logger = get_logger("statsapi_treatment")
+
 
 DATA_FILTER_THRESHOLD = 0.6
 
 
-OUTPUT_DETAILS = f"{LEAGUE_NAME}_{DATE_TIME_EXECUTION}"
-BATTER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_batter_stats_df.csv"
-PITCHER_DATA_FILE_NAME = f"{OUTPUT_DETAILS}_pitcher_stats_df.csv"
-
-
-class DataPaths(BaseModel):
-    path_to_input_data: str
-    path_to_output_data: Optional[str] = None
-
-
 class TreatmentDataPaths(BaseModel):
-    """SQLite source, league/date selection, and CSV destination for treatment."""
+    """SQLite source and league/date selection for treatment."""
 
-    database_path: str
+    database_path: Path
     league_name: str
     execution_date: str
-    path_to_output_data: str
 
 
 class DataTreaterInputRepresentation(BaseModel):
@@ -86,20 +88,11 @@ class DataTreater:
         self,
         data_paths: TreatmentDataPaths,
         input_parameters: DataTreaterInputRepresentation,
+        input_data: pd.DataFrame | None = None,
     ):
         self.data_paths = data_paths
         self.input_parameters = input_parameters
-
-    def set_output_data_file(self) -> None:
-        output_data = self.get_output_data()
-        output_path = self.data_paths.path_to_output_data
-        output_data.to_csv(output_path)  # type: ignore
-        logger.info(
-            "output_file_generated",
-            file_path=output_path,
-            data_shape=output_data.shape,
-            columns=list(output_data.columns[:5]),  # First 5 columns for brevity
-        )
+        self.input_data = input_data
 
     def get_output_data(self) -> pd.DataFrame:
         filtered_data = self.get_filter_data()
@@ -132,7 +125,9 @@ class DataTreater:
 
     def get_subset_data(self) -> pd.DataFrame:
         input_data = self.get_input_data()
-        columns = self.input_parameters.subset_columns
+        columns = list(self.input_parameters.subset_columns)
+        if "player_id" in input_data:
+            columns.insert(0, "player_id")
         group = self.input_parameters.stats_group
         grouped_columns = [
             column
@@ -156,7 +151,9 @@ class DataTreater:
         return intermediate_data
 
     def get_input_data(self) -> pd.DataFrame:
-        with create_connection(self.data_paths.database_path) as conn:
+        if self.input_data is not None:
+            return self.input_data.copy()
+        with read_connection(self.data_paths.database_path) as conn:
             input_data = read_player_stats(
                 conn,
                 self.data_paths.league_name,
@@ -177,12 +174,16 @@ def _grouped_subset(
     input_data: pd.DataFrame, columns: list[str], group: str
 ) -> pd.DataFrame:
     source_columns = [
-        name if name in PLAYER_INFORMATION else f"{group}_{name}" for name in columns
+        name if name in [*PLAYER_INFORMATION, "player_id"] else f"{group}_{name}"
+        for name in columns
     ]
     if group.startswith("fielding_"):
         # Position-specific metrics (for example catcherERA) are optional.
         selected = input_data.reindex(columns=source_columns)
-        selected[PLAYER_INFORMATION] = input_data[PLAYER_INFORMATION]
+        identity = [
+            name for name in columns if name in [*PLAYER_INFORMATION, "player_id"]
+        ]
+        selected[identity] = input_data[identity]
     elif not any(column.startswith(f"{group}_") for column in input_data.columns):
         return pd.DataFrame(columns=columns, dtype=float)
     else:
@@ -256,33 +257,12 @@ def filter_data(input_df: pd.DataFrame, conditions_dict: dict) -> pd.DataFrame:
 batting_stats_list = PLAYER_INFORMATION + BATTING_STATS
 batter_filter_conditions_dict = {"plateAppearances": 100, "atBats": 50}
 
-batter_plate_norm_stats = [
-    "strikeOuts",
-    "homeRuns",
-    "hits",
-    "rbi",
-    "baseOnBalls",
-    "totalBases",
-    "difstrikeOutsbaseOnBalls",
-]
-batter_mean_norm_stats = [
-    "avg",
-    "babip",
-    "obp",
-    "ops",
-    "hits",
-    "rbi",
-    "baseOnBalls",
-    "totalBases",
-    "difstrikeOutsbaseOnBalls",
-]
-
 
 batter_transformation_dict = {
     create_babip: None,
     create_dif_strike_outs_base_on_balls: None,
-    create_plate_appearance_normalization: batter_plate_norm_stats,
-    create_mean_normalization: batter_mean_norm_stats,
+    create_plate_appearance_normalization: BATTER_PLATE_STATS,
+    create_mean_normalization: BATTER_MEAN_STATS,
 }
 
 batter_input_data_repr = DataTreaterInputRepresentation(
@@ -296,21 +276,10 @@ batter_input_data_repr = DataTreaterInputRepresentation(
 pitching_stats_list = PLAYER_INFORMATION + PITCHING_STATS
 pitcher_filter_conditions_dict = {"gamesPlayed": 5, "inningsPitched": 15}
 
-pitcher_innings_norm_stats = ["intentionalWalks", "numberOfPitches", "strikes", "outs"]
-
-pitcher_mean_norm_stats = [
-    "era",
-    "whip",
-    "strikeoutsPer9Inn",
-    "walksPer9Inn",
-    "hitsPer9Inn",
-    "homeRunsPer9",
-]
-
 
 pitcher_transformation_dict = {
-    create_innings_pitched_normalization: pitcher_innings_norm_stats,
-    create_mean_normalization: pitcher_mean_norm_stats,
+    create_innings_pitched_normalization: PITCHER_INNINGS_STATS,
+    create_mean_normalization: PITCHER_MEAN_STATS,
 }
 
 pitcher_input_data_repr = DataTreaterInputRepresentation(
@@ -329,17 +298,8 @@ defender_filter_conditions_dict = {
 }  # this likely needs to be augmented in light of the analysis for batters
 
 
-defender_mean_norm_stats = [
-    "catcherERA",
-    "assists",
-    "errors",
-    # "rangeFactorPer9Inn",
-    "doublePlays",
-    "fielding",
-]
-
 defender_transformation_dict = {
-    create_mean_normalization: defender_mean_norm_stats,
+    create_mean_normalization: DEFENDER_MEAN_STATS,
 }
 
 defender_input_data_repr = DataTreaterInputRepresentation(
@@ -350,69 +310,78 @@ defender_input_data_repr = DataTreaterInputRepresentation(
 )
 
 
+def _read_treatment_snapshot(
+    conn: sqlite3.Connection, paths: TreatmentDataPaths
+) -> tuple[pd.DataFrame, str]:
+    """Load a keyed source snapshot and identify its statistics layout."""
+    source = _convert_numeric_columns(
+        read_player_stats(conn, paths.league_name, paths.execution_date)
+    )
+    scope = f"{paths.league_name}/{paths.execution_date}"
+    if source.empty:
+        raise ValueError(f"No source snapshot: {scope}")
+    keys = ["team_id", "player_id"]
+    if not set(keys).issubset(source.columns):
+        raise ValueError(f"Invalid source identity: {scope}")
+    if source[keys].isna().any(axis=None) or source.duplicated(keys).any():
+        raise ValueError(f"Invalid source identity: {scope}")
+    grouped = source.columns.str.startswith(("hitting_", "pitching_", "fielding_"))
+    layout = (
+        "grouped"
+        if source.loc[:, grouped].notna().any(axis=None)
+        else "legacy_unprefixed"
+    )
+    return source, layout
+
+
 def treat_player_stats(
-    database_path: str,
+    database_path: Path,
     league_name: str,
     execution_date: str,
-    output_directory: str,
-) -> None:
-    """Create treated player-statistics files for one league run."""
-    output_details = f"{league_name}_{execution_date}"
-    player_configs = [
-        ("batter", batter_input_data_repr, f"{output_details}_batter_stats_df.csv"),
-        ("pitcher", pitcher_input_data_repr, f"{output_details}_pitcher_stats_df.csv"),
-        (
-            "defender",
-            defender_input_data_repr,
-            f"{output_details}_defender_stats_df.csv",
-        ),
-    ]
+) -> dict[str, int]:
+    """Transform one source snapshot and publish all three categories atomically."""
+    validate_scope(league_name, execution_date)
+    paths = TreatmentDataPaths(
+        database_path=database_path,
+        league_name=league_name,
+        execution_date=execution_date,
+    )
+    configs = {
+        "batter": batter_input_data_repr,
+        "pitcher": pitcher_input_data_repr,
+        "defender": defender_input_data_repr,
+    }
+    source_uri = paths.database_path.resolve().as_uri() + "?mode=rw"
+    with closing(sqlite3.connect(source_uri, uri=True)) as conn, conn:
+        # Lock the source until all derived categories have been published.
+        conn.execute("BEGIN IMMEDIATE")
+        source, layout = _read_treatment_snapshot(conn, paths)
+        outputs = {
+            category: DataTreater(paths, config, source).get_output_data()
+            for category, config in configs.items()
+        }
+        ensure_treated_tables(conn)
+        for category, frame in outputs.items():
+            save_treated_category(
+                conn, category, league_name, execution_date, frame, layout
+            )
 
-    for player_type, input_parameters, output_filename in player_configs:
-        logger.info("processing_player_type", player_type=player_type)
-        data_paths = TreatmentDataPaths(
-            database_path=database_path,
-            league_name=league_name,
-            execution_date=execution_date,
-            path_to_output_data=str(Path(output_directory) / output_filename),
-        )
-        DataTreater(data_paths, input_parameters).set_output_data_file()
-        logger.info("player_type_completed", player_type=player_type)
+    counts = {category: len(frame) for category, frame in outputs.items()}
+    logger.info(
+        "treatment_completed",
+        league_name=league_name,
+        date=execution_date,
+        row_counts=counts,
+    )
+    return counts
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="Optional input arguments for treatment script",
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter,
+        description="Store treated player statistics in SQLite"
     )
-
-    parser.add_argument("--date", type=str)
-    parser.add_argument("--league_name", type=str)
-
+    parser.add_argument("--date", default=DATE_TIME_EXECUTION)
+    parser.add_argument("--league_name", default=LEAGUE_NAME)
+    parser.add_argument("--database", type=Path, default=database_path())
     args = parser.parse_args()
-    config = vars(args)
-
-    input_date = config.get("date")
-    input_league_name = config.get("league_name")
-
-    if input_date:
-        DATE_TIME_EXECUTION = config["date"]
-
-    if input_league_name:
-        LEAGUE_NAME = config["league_name"]
-
-    logger.info(
-        "treatment_started",
-        league=LEAGUE_NAME,
-        date=DATE_TIME_EXECUTION,
-        player_types=["batter", "pitcher", "defender"],
-    )
-
-    treat_player_stats(
-        get_database_path(),
-        LEAGUE_NAME,
-        DATE_TIME_EXECUTION,
-        DATA_FILE_LOCATION,
-    )
-
-    logger.info("treatment_completed", player_types_processed=3)
+    treat_player_stats(args.database, args.league_name, args.date)

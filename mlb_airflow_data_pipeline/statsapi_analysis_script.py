@@ -1,3 +1,6 @@
+import argparse
+from pathlib import Path
+
 import matplotlib
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -5,74 +8,65 @@ import pandas as pd
 matplotlib.use("Agg")
 
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
-    DATA_FILE_LOCATION,
+    DATE_TIME_EXECUTION,
     OUTPUT_FILE_LOCATION,
     LEAGUE_NAME,
 )
-from mlb_airflow_data_pipeline.statsapi_treatment_script import (
-    BATTER_DATA_FILE_NAME,
-    OUTPUT_DETAILS,
-    PITCHER_DATA_FILE_NAME,
-    DataPaths,
-)
+from mlb_airflow_data_pipeline.db_utils import database_path, read_connection
+from mlb_airflow_data_pipeline.treated_storage import read_treated_stats
+
 from mlb_airflow_data_pipeline.logging_setup import get_logger
 
-# Initialize structured logger
-logger = get_logger("statsapi_analysis", league=LEAGUE_NAME)
+logger = get_logger("statsapi_analysis")
 
 
 class DataPlotter:
-    def __init__(self, data_paths: DataPaths, representable_variables: list):
-        self.data_paths = data_paths
+    def __init__(
+        self,
+        database_path: Path,
+        league_name: str,
+        execution_date: str,
+        category: str,
+        representable_variables: list,
+        output_directory: str = OUTPUT_FILE_LOCATION,
+    ):
+        self.database_path = database_path
+        self.league_name = league_name
+        self.execution_date = execution_date
+        self.category = category
         self.representable_variables = representable_variables
+        self.output_directory = Path(output_directory)
+
+    def get_input_data(self) -> pd.DataFrame:
+        with read_connection(self.database_path) as conn:
+            return read_treated_stats(
+                conn, self.category, self.league_name, self.execution_date
+            )
 
     def set_plots(self) -> None:
         input_data = self.get_input_data()
-        logger.info(
-            "visualization_started",
-            data_shape=input_data.shape,
-            variable_pairs_count=len(self.representable_variables),
-        )
-
-        for variable_pair in self.representable_variables:
-            try:
-                scatter_plot(input_data, variable_pair)
-                if self.data_paths.path_to_output_data:
-                    plot_filename = (
-                        self.data_paths.path_to_output_data
-                        + f"_{variable_pair[0]}_{variable_pair[1]}.png"
-                    )
-                    plt.savefig(plot_filename)
-                    logger.info(
-                        "plot_created",
-                        x_variable=variable_pair[0],
-                        y_variable=variable_pair[1],
-                        file_path=plot_filename,
-                    )
-            except Exception as e:
-                logger.error(
-                    "plot_creation_failed",
-                    x_variable=variable_pair[0],
-                    y_variable=variable_pair[1],
-                    error=str(e),
-                    exc_info=True,
-                )
-
-    def get_input_data(self) -> pd.DataFrame:
-        input_data = pd.read_csv(self.data_paths.path_to_input_data, index_col=0)
-        logger.info(
-            "visualization_data_loaded",
-            file_path=self.data_paths.path_to_input_data,
-            data_shape=input_data.shape,
-        )
-        return input_data
+        self.output_directory.mkdir(parents=True, exist_ok=True)
+        for variables in self.representable_variables:
+            scatter_plot(input_data, variables)
+            path = (
+                self.output_directory
+                / f"{self.league_name}_{self.execution_date}_{variables[0]}_{variables[1]}.png"
+            )
+            plt.savefig(path)
+            plt.close()
+            logger.info(
+                "plot_created",
+                file_path=str(path),
+                league=self.league_name,
+                date=self.execution_date,
+            )
 
 
-# helper functions
 def scatter_plot(input_df: pd.DataFrame, variable_pair: tuple[str, str]):
     """Create scatter plot for two variables"""
 
     x_var, y_var = variable_pair
+    input_df = input_df.dropna(subset=[x_var, y_var])
 
     fig, ax = plt.subplots()
     (
@@ -112,27 +106,26 @@ pitcher_tuple_variable_list = [
 ]
 
 
+def create_analysis_plots(
+    database: Path,
+    league: str,
+    execution_date: str,
+    output_directory: str = OUTPUT_FILE_LOCATION,
+) -> None:
+    """Create each category's scatter plots from its completed snapshot."""
+    for category, variables in (
+        ("batter", batter_tuple_variable_list),
+        ("pitcher", pitcher_tuple_variable_list),
+    ):
+        DataPlotter(
+            database, league, execution_date, category, variables, output_directory
+        ).set_plots()
+
+
 if __name__ == "__main__":
-    batter_plots_input_paths = DataPaths(
-        path_to_input_data=DATA_FILE_LOCATION + BATTER_DATA_FILE_NAME,
-        path_to_output_data=OUTPUT_FILE_LOCATION + OUTPUT_DETAILS,
-    )
-
-    batter_plotter = DataPlotter(
-        data_paths=batter_plots_input_paths,
-        representable_variables=batter_tuple_variable_list,
-    )
-
-    batter_plotter.set_plots()
-
-    pitcher_plots_input_paths = DataPaths(
-        path_to_input_data=DATA_FILE_LOCATION + PITCHER_DATA_FILE_NAME,
-        path_to_output_data=OUTPUT_FILE_LOCATION + OUTPUT_DETAILS,
-    )
-
-    pitcher_plotter = DataPlotter(
-        data_paths=pitcher_plots_input_paths,
-        representable_variables=pitcher_tuple_variable_list,
-    )
-
-    pitcher_plotter.set_plots()
+    parser = argparse.ArgumentParser(description="Plot treated database statistics")
+    parser.add_argument("--database", type=Path, default=database_path())
+    parser.add_argument("--league_name", default=LEAGUE_NAME)
+    parser.add_argument("--date", default=DATE_TIME_EXECUTION)
+    args = parser.parse_args()
+    create_analysis_plots(args.database, args.league_name, args.date)

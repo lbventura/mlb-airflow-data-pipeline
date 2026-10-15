@@ -20,7 +20,7 @@ import sqlite3
 import tempfile
 from contextlib import closing, contextmanager
 from pathlib import Path
-from typing import Iterator
+from typing import Generator
 
 import pandas as pd
 
@@ -33,7 +33,7 @@ RUN_KEYS = {
 
 
 @contextmanager
-def create_connection(db_file: str) -> Iterator[sqlite3.Connection]:
+def create_connection(db_file: str) -> Generator[sqlite3.Connection]:
     """Creates a connection to the SQLite database.
 
     Args:
@@ -212,9 +212,10 @@ def _migrate_run_table(
     conn.execute(f"ALTER TABLE {_quoted(replacement)} RENAME TO {_quoted(table_name)}")
 
 
-def _insert_rows(
+def insert_rows(
     conn: sqlite3.Connection, table_name: str, dataframe: pd.DataFrame
 ) -> None:
+    """Insert dataframe rows, preserving null values, without committing."""
     columns = list(dataframe.columns)
     placeholders = ", ".join("?" for _ in columns)
     insert_statement = (
@@ -301,7 +302,7 @@ def save_extraction_run(
                 f"DELETE FROM {_quoted(table_name)} WHERE league_name = ? AND date = ?",
                 (league_name, execution_date),
             )
-            _insert_rows(conn, table_name, dataframe)
+            insert_rows(conn, table_name, dataframe)
         conn.execute("RELEASE SAVEPOINT extraction_run")
     except Exception:
         conn.execute("ROLLBACK TO SAVEPOINT extraction_run")
@@ -340,3 +341,18 @@ def get_database_path() -> str:
         conn = sqlite3.connect(db_path)
         conn.close()
     return str(db_path)
+
+
+@contextmanager
+def read_connection(database_path: Path) -> Generator[sqlite3.Connection]:
+    """Open an existing database without creating or modifying it."""
+    with closing(
+        sqlite3.connect(database_path.resolve().as_uri() + "?mode=ro", uri=True)
+    ) as conn:
+        conn.execute("BEGIN")
+        yield conn
+
+
+def database_path() -> Path:
+    """Configured database location without filesystem side effects."""
+    return Path(DATA_FILE_LOCATION) / "mlb_data.db"

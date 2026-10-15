@@ -6,6 +6,7 @@ import pandas as pd
 import pytest
 
 from mlb_airflow_data_pipeline.db_utils import create_connection, save_extraction_run
+from mlb_airflow_data_pipeline.treated_storage import read_treated_stats
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     BATTING_STATS,
     PITCHING_STATS,
@@ -20,7 +21,7 @@ from mlb_airflow_data_pipeline.statsapi_treatment_script import (
 )
 
 
-def test_grouped_stats_reach_role_specific_csv_outputs(
+def test_grouped_stats_reach_role_specific_database_outputs(
     tmp_path: Path,
 ) -> None:
     players = pd.DataFrame(
@@ -82,7 +83,6 @@ def test_grouped_stats_reach_role_specific_csv_outputs(
         database_path=str(database_path),
         league_name="american_league",
         execution_date="2026-10-01",
-        path_to_output_data=str(tmp_path / "unused.csv"),
     )
     batter = DataTreater(paths, batter_input_data_repr).get_subset_data()
     pitcher = DataTreater(paths, pitcher_input_data_repr).get_subset_data()
@@ -105,15 +105,12 @@ def test_grouped_stats_reach_role_specific_csv_outputs(
     assert defender.set_index("position").loc["C", "catcherERA"] == 3.25
     assert pd.isna(defender.set_index("position").loc["1B", "catcherERA"])
 
-    treat_player_stats(
-        str(database_path), "american_league", "2026-10-01", str(tmp_path)
-    )
-    outputs = {
-        role: pd.read_csv(
-            tmp_path / f"american_league_2026-10-01_{role}_stats_df.csv", index_col=0
-        )
-        for role in ("batter", "pitcher", "defender")
-    }
+    treat_player_stats(database_path, "american_league", "2026-10-01")
+    with create_connection(str(database_path)) as conn:
+        outputs = {
+            role: read_treated_stats(conn, role, "american_league", "2026-10-01")
+            for role in ("batter", "pitcher", "defender")
+        }
     for result in outputs.values():
         assert set(result.playername) == {"Player One"}
     assert outputs["batter"].loc[0, "hitsperplateAppearance"] == pytest.approx(40 / 388)
@@ -164,7 +161,6 @@ def test_legacy_snapshot_stays_readable_after_grouped_columns_are_added(
         database_path=str(database_path),
         league_name="american_league",
         execution_date="2026-09-30",
-        path_to_output_data=str(tmp_path / "unused.csv"),
     )
     subset = DataTreater(paths, batter_input_data_repr).get_subset_data()
     assert subset.loc[0, "hits"] == 7
@@ -199,15 +195,12 @@ def test_grouped_snapshot_without_pitching_or_defending_writes_empty_role_output
             pd.DataFrame({"team_id": [147]}),
             players,
         )
-    treat_player_stats(
-        str(database_path), "american_league", "2026-10-01", str(tmp_path)
-    )
-    for role in ("pitcher", "defender"):
-        result = pd.read_csv(
-            tmp_path / f"american_league_2026-10-01_{role}_stats_df.csv"
-        )
-        assert result.empty
-        assert "gamesPlayed" in result.columns
+    treat_player_stats(database_path, "american_league", "2026-10-01")
+    with create_connection(str(database_path)) as conn:
+        for role in ("pitcher", "defender"):
+            result = read_treated_stats(conn, role, "american_league", "2026-10-01")
+            assert result.empty
+            assert "gamesPlayed" in result.columns
 
 
 def test_treatment_reads_scoped_player_stats_and_writes_outputs(
@@ -238,13 +231,11 @@ def test_treatment_reads_scoped_player_stats_and_writes_outputs(
             player_stats.assign(playername="Other date"),
         )
 
-    treat_player_stats(str(database_path), league_name, execution_date, str(tmp_path))
+    treat_player_stats(database_path, league_name, execution_date)
 
-    for player_type in ("batter", "pitcher", "defender"):
-        output_path = (
-            tmp_path / f"{league_name}_{execution_date}_{player_type}_stats_df.csv"
-        )
-        output_data = pd.read_csv(output_path, index_col=0)
-        assert not output_data.empty
-        assert "playername" in output_data.columns
-        assert not output_data.playername.isin(["Other league", "Other date"]).any()
+    with create_connection(str(database_path)) as conn:
+        for category in ("batter", "pitcher", "defender"):
+            output = read_treated_stats(conn, category, league_name, execution_date)
+            assert not output.empty
+            assert "playername" in output.columns
+            assert not output.playername.isin(["Other league", "Other date"]).any()
