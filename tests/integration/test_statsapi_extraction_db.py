@@ -14,7 +14,7 @@ from mlb_airflow_data_pipeline.treated_storage import (
 )
 from mlb_airflow_data_pipeline.statsapi_extraction_script import (
     DataExtractor,
-    TeamStats,
+    get_team_stats,
 )
 from mlb_airflow_data_pipeline.statsapi_parameters_script import (
     BATTING_STATS,
@@ -112,7 +112,7 @@ def test_collision_survives_database_write_with_one_stats_call(
     monkeypatch.setattr(statsapi, "get", get)
     monkeypatch.setattr(extraction_script, "_get_stats_type", lambda: stats_type)
 
-    rows, active, inactive = TeamStats({101: "Player One"}).get_team_stats()
+    rows, active, inactive = get_team_stats({101: "Player One"})
     assert active == {101: "Player One"}
     assert inactive == {}
     rows["playername"] = "Player One"
