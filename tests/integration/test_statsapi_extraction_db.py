@@ -206,7 +206,7 @@ def test_roster_player_stats_reach_database(
         (606, "Player Six", 147, "606", None, execution_date, "american_league"),
     ]
     assert standings_count == 3
-    standings_data.assert_called_once_with(103, season=SEASON_YEAR)
+    standings_data.assert_called_once_with("103", season=SEASON_YEAR)
     assert get.call_args_list[:3] == [
         call(
             "team_roster",
