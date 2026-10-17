@@ -121,38 +121,35 @@ def _get_stats_type(is_season_stats: bool = IS_SEASON_STATS) -> str:
     return stats_type
 
 
-class TeamStats:
-    def __init__(self, roster_players: dict[int, str]) -> None:
-        self.roster_players = roster_players
+def get_team_stats(
+    roster_players: dict[int, str],
+) -> tuple[pd.DataFrame, dict[int, str], dict[int, str]]:
+    """Return roster players' statistics and active/inactive name mappings."""
+    active_players: dict[int, str] = {}
+    inactive_players: dict[int, str] = {}
+    player_stats: dict[int, dict[str, str]] = {}
+    stats_type = _get_stats_type()
+    season = f",season={SEASON_YEAR}" if stats_type == "season" else ""
 
-    def get_team_stats(
-        self,
-    ) -> tuple[pd.DataFrame, dict[int, str], dict[int, str]]:
-        active_players: dict[int, str] = {}
-        inactive_players: dict[int, str] = {}
-        player_stats: dict[int, dict[str, str]] = {}
-        stats_type = _get_stats_type()
-        season = f",season={SEASON_YEAR}" if stats_type == "season" else ""
+    for player_id, name in roster_players.items():
+        response = statsapi.get(
+            "person",
+            {
+                "personId": player_id,
+                "hydrate": f"stats(group=[hitting,pitching,fielding],type={stats_type}{season},sportId=1),currentTeam",
+            },
+        )
+        sections = response["people"][0].get("stats", [])
+        stats = _generate_player_stats(sections)
+        if not stats:
+            inactive_players[player_id] = name
+            continue
+        _validate_player_stats_columns(stats)
+        player_stats[player_id] = stats
+        active_players[player_id] = name
 
-        for player_id, name in self.roster_players.items():
-            response = statsapi.get(
-                "person",
-                {
-                    "personId": player_id,
-                    "hydrate": f"stats(group=[hitting,pitching,fielding],type={stats_type}{season},sportId=1),currentTeam",
-                },
-            )
-            sections = response["people"][0].get("stats", [])
-            stats = _generate_player_stats(sections)
-            if not stats:
-                inactive_players[player_id] = name
-                continue
-            _validate_player_stats_columns(stats)
-            player_stats[player_id] = stats
-            active_players[player_id] = name
-
-        team_player_stats = pd.DataFrame.from_dict(player_stats, orient="index")
-        return team_player_stats, active_players, inactive_players
+    team_player_stats = pd.DataFrame.from_dict(player_stats, orient="index")
+    return team_player_stats, active_players, inactive_players
 
 
 class DataExtractor:
@@ -199,13 +196,12 @@ class DataExtractor:
         """
 
         roster_players = self.league_team_roster_players[team_number]
-        player_information_per_team = TeamStats(roster_players)
 
         (
             team_player_stats,
             active_players,
             inactive_player_info,
-        ) = player_information_per_team.get_team_stats()
+        ) = get_team_stats(roster_players)
         team_player_stats["playername"] = pd.Series(active_players)
         team_player_stats["team_id"] = team_number
 

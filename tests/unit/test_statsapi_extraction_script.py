@@ -72,6 +72,21 @@ def test_mixed_roster_preserves_player_names_and_stats(
     assert rows["team_id"].eq(147).all()
 
 
+@pytest.mark.parametrize("roster", [{}, {404: "Inactive"}], ids=["empty", "inactive"])
+def test_team_stats_without_active_players(
+    monkeypatch: pytest.MonkeyPatch, roster: dict[int, str]
+) -> None:
+    get = Mock(return_value={"people": [{"id": 404}]})
+    monkeypatch.setattr(statsapi, "get", get)
+
+    rows, active, inactive = extraction_script.get_team_stats(roster)
+
+    assert rows.empty
+    assert active == {}
+    assert inactive == roster
+    assert get.call_count == len(roster)
+
+
 @pytest.mark.parametrize("reverse_sections", [False, True])
 def test_same_named_stats_keep_their_group_and_position(
     reverse_sections: bool,
@@ -235,9 +250,7 @@ def test_missing_player_stat_is_not_hidden_by_another_player(
         ),
     )
     with pytest.raises(ValueError, match="hitting_hits"):
-        extraction_script.TeamStats(
-            {101: "Complete", 102: "Incomplete"}
-        ).get_team_stats()
+        extraction_script.get_team_stats({101: "Complete", 102: "Incomplete"})
 
 
 @pytest.mark.parametrize(
