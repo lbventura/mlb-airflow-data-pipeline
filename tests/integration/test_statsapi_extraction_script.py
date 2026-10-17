@@ -50,7 +50,7 @@ def test_standings_data() -> None:
     )
 
     result: list[dict[str, Any]] = statsapi.standings_data(
-        american_league_id, season=SEASON_YEAR
+        str(american_league_id), season=SEASON_YEAR
     )[  # type: ignore
         first_division_american_league
     ]["teams"]

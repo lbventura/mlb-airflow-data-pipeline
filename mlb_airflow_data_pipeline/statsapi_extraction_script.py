@@ -1,5 +1,6 @@
 from collections.abc import Iterable
 from datetime import datetime
+from typing import Any, cast
 
 import pandas as pd
 import statsapi
@@ -38,9 +39,12 @@ def _insert_col_in_first_position(
 
 
 def _get_team_roster_players(team_id: int) -> dict[int, str]:
-    response = statsapi.get(
-        "team_roster",
-        {"teamId": team_id, "season": SEASON_YEAR, "rosterType": "active"},
+    response = cast(
+        dict[str, Any],
+        statsapi.get(
+            "team_roster",
+            {"teamId": team_id, "season": SEASON_YEAR, "rosterType": "active"},
+        ),
     )
     try:
         roster = response["roster"]
@@ -132,12 +136,15 @@ def get_team_stats(
     season = f",season={SEASON_YEAR}" if stats_type == "season" else ""
 
     for player_id, name in roster_players.items():
-        response = statsapi.get(
-            "person",
-            {
-                "personId": player_id,
-                "hydrate": f"stats(group=[hitting,pitching,fielding],type={stats_type}{season},sportId=1),currentTeam",
-            },
+        response = cast(
+                dict[str, Any],
+                statsapi.get(
+                "person",
+                {
+                    "personId": player_id,
+                    "hydrate": f"stats(group=[hitting,pitching,fielding],type={stats_type}{season},sportId=1),currentTeam",
+                },
+                ),
         )
         sections = response["people"][0].get("stats", [])
         stats = _generate_player_stats(sections)
@@ -229,9 +236,7 @@ class DataExtractor:
 
         league_number = LEAGUE_MAPPING[self.league_name]
         league_list = []
-        standings = statsapi.standings_data(
-            league_number, season=SEASON_YEAR
-        )  # TODO: check if `league_number` type should be adjusted to str
+        standings = statsapi.standings_data(str(league_number), season=SEASON_YEAR)
 
         for division in LEAGUE_DIVISION_MAPPING[league_number]:
             division_results: pd.DataFrame = pd.DataFrame(
