@@ -1,5 +1,4 @@
 from collections.abc import Iterable
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from typing import Any, cast
 
@@ -138,14 +137,14 @@ def get_team_stats(
 
     for player_id, name in roster_players.items():
         response = cast(
-            dict[str, Any],
-            statsapi.get(
+                dict[str, Any],
+                statsapi.get(
                 "person",
                 {
                     "personId": player_id,
                     "hydrate": f"stats(group=[hitting,pitching,fielding],type={stats_type}{season},sportId=1),currentTeam",
                 },
-            ),
+                ),
         )
         sections = response["people"][0].get("stats", [])
         stats = _generate_player_stats(sections)
@@ -174,28 +173,20 @@ class DataExtractor:
         league_player_team_stats = {}
         inactive_players_per_team = {}
 
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            team_results = {
-                team_number: executor.submit(
-                    self.get_player_stats_dataframe_per_team, team_number
-                )
-                for team_number in self.league_team_roster_players
-            }
-            try:
-                for team_number, result in team_results.items():
-                    team_player_stats, inactive_player_info = result.result()
-                    league_player_team_stats[team_number] = team_player_stats
-                    if inactive_player_info:
-                        inactive_players_per_team[team_number] = inactive_player_info
-                    logger.info(
-                        "team_extraction_success",
-                        team_name=self.team_id_name_mapping[team_number],
-                        team_number=team_number,
-                        players_count=len(team_player_stats),
-                    )
-            finally:
-                for result in team_results.values():
-                    result.cancel()
+        for team_number in self.league_team_roster_players:
+            (
+                team_player_stats,
+                inactive_player_info,
+            ) = self.get_player_stats_dataframe_per_team(team_number)
+            league_player_team_stats[team_number] = team_player_stats
+            if inactive_player_info:
+                inactive_players_per_team[team_number] = inactive_player_info
+            logger.info(
+                "team_extraction_success",
+                team_name=self.team_id_name_mapping[team_number],
+                team_number=team_number,
+                players_count=len(team_player_stats),
+            )
         player_stats = pd.concat(league_player_team_stats.values())
         player_stats["date"] = DATE_TIME_EXECUTION
 

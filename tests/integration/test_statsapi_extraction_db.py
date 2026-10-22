@@ -1,9 +1,5 @@
 import sqlite3
-from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
 from pathlib import Path
-from threading import Event, get_ident
-from typing import Generator
 from unittest.mock import Mock, call
 
 import pandas as pd
@@ -222,9 +218,9 @@ def test_roster_player_stats_reach_database(
         )
         for team_id in (147, 111, 133)
     ]
-    assert sorted(player_stats.call_args_list) == sorted(
-        [call(player_id) for player_id in (101, 202, 505, 606, 303, 404)]
-    )
+    assert player_stats.call_args_list == [
+        call(player_id) for player_id in (101, 202, 505, 606, 303, 404)
+    ]
     lookup_player.assert_not_called()
 
     treat_player_stats(database_path, "american_league", execution_date)
@@ -306,93 +302,6 @@ def test_failed_team_preserves_previous_snapshot(
 
     with create_connection(database_path) as conn:
         assert list(conn.iterdump()) == before
-
-
-@pytest.mark.parametrize("worker_fails", [False, True])
-def test_database_waits_for_all_workers(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    league_api: tuple[Mock, Mock, Mock, Mock],
-    worker_fails: bool,
-) -> None:
-    database = str(tmp_path / "runs.db")
-    league, day = "american_league", "2026-09-26"
-    extraction_script.run_extraction(database, league, day)
-    treat_player_stats(Path(database), league, day)
-    with sqlite3.connect(database) as conn:
-        before = list(conn.iterdump())
-
-    release, waiting, other_finished = Event(), Event(), Event()
-    original_team = DataExtractor.get_player_stats_dataframe_per_team
-    original_connection = extraction_script.create_connection
-    original_backup = extraction_script.backup_database_before_migration
-    caller_ids: list[int] = []
-    connection_ids: list[int] = []
-    statements: list[str] = []
-
-    def collect(self: DataExtractor, team: int) -> tuple[pd.DataFrame, dict[int, str]]:
-        if team == 147:
-            waiting.set()
-            assert release.wait(10)
-            if worker_fails:
-                raise ConnectionError("Delayed worker failed")
-        result = original_team(self, team)
-        if team == 111:
-            other_finished.set()
-        return result
-
-    @contextmanager
-    def connect(path: str) -> Generator[sqlite3.Connection]:
-        connection_ids.append(get_ident())
-        with original_connection(path) as conn:
-            conn.set_trace_callback(statements.append)
-            yield conn
-
-    backup = Mock(wraps=original_backup)
-    monkeypatch.setattr(DataExtractor, "get_player_stats_dataframe_per_team", collect)
-    monkeypatch.setattr(extraction_script, "create_connection", connect)
-    monkeypatch.setattr(extraction_script, "backup_database_before_migration", backup)
-
-    def run() -> None:
-        caller_ids.append(get_ident())
-        extraction_script.run_extraction(database, league, day)
-
-    with ThreadPoolExecutor(max_workers=1) as caller:
-        result = caller.submit(run)
-        try:
-            assert waiting.wait(10) and other_finished.wait(10)
-            assert not result.done()
-            assert connection_ids == []
-            backup.assert_not_called()
-            with sqlite3.connect(database) as conn:
-                assert list(conn.iterdump()) == before
-        finally:
-            release.set()
-        if worker_fails:
-            with pytest.raises(ConnectionError, match="Delayed worker failed"):
-                result.result(timeout=10)
-        else:
-            result.result(timeout=10)
-
-    if worker_fails:
-        assert connection_ids == []
-        backup.assert_not_called()
-        with sqlite3.connect(database) as conn:
-            assert list(conn.iterdump()) == before
-    else:
-        assert connection_ids == caller_ids
-        backup.assert_called_once_with(database)
-        assert [sql for sql in statements if sql.startswith("BEGIN")] == [
-            "BEGIN IMMEDIATE"
-        ]
-        assert statements.count("COMMIT") == 1
-        with sqlite3.connect(database) as conn:
-            assert conn.execute("SELECT COUNT(*) FROM player_stats").fetchone() == (5,)
-            assert conn.execute("SELECT COUNT(*) FROM league_standings").fetchone() == (
-                3,
-            )
-            with pytest.raises(SnapshotUnavailable):
-                read_treated_stats(conn, "batter", league, day)
 
 
 def test_data_extractor_creates_valid_dataframes() -> None:
