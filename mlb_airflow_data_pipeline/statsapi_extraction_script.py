@@ -174,28 +174,40 @@ class DataExtractor:
         league_player_team_stats = {}
         inactive_players_per_team = {}
 
-        with ThreadPoolExecutor(max_workers=4) as executor:
+        executor = ThreadPoolExecutor(max_workers=4)
+        team_results = {}
+        try:
             team_results = {
                 team_number: executor.submit(
                     self.get_player_stats_dataframe_per_team, team_number
                 )
                 for team_number in self.league_team_roster_players
             }
-            try:
-                for team_number, result in team_results.items():
-                    team_player_stats, inactive_player_info = result.result()
-                    league_player_team_stats[team_number] = team_player_stats
-                    if inactive_player_info:
-                        inactive_players_per_team[team_number] = inactive_player_info
-                    logger.info(
-                        "team_extraction_success",
+            for team_number, result in team_results.items():
+                team_player_stats, inactive_player_info = result.result()
+                league_player_team_stats[team_number] = team_player_stats
+                if inactive_player_info:
+                    inactive_players_per_team[team_number] = inactive_player_info
+                logger.info(
+                    "team_extraction_success",
+                    team_name=self.team_id_name_mapping[team_number],
+                    team_number=team_number,
+                    players_count=len(team_player_stats),
+                )
+        finally:
+            # workers can fail during shutdown; inspect them after joining.
+            executor.shutdown(wait=True, cancel_futures=True)
+            for team_number, result in team_results.items():
+                if not result.cancelled() and (error := result.exception()) is not None:
+                    logger.error(
+                        "team_extraction_failed",
+                        league=self.league_name,
                         team_name=self.team_id_name_mapping[team_number],
                         team_number=team_number,
-                        players_count=len(team_player_stats),
+                        error_type=type(error).__name__,
+                        error=str(error),
+                        exc_info=(type(error), error, error.__traceback__),
                     )
-            finally:
-                for result in team_results.values():
-                    result.cancel()
         player_stats = pd.concat(league_player_team_stats.values())
         player_stats["date"] = DATE_TIME_EXECUTION
 
