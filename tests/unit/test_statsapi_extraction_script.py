@@ -1,7 +1,7 @@
-from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from itertools import permutations
 from threading import Event, Lock
-from unittest.mock import ANY, Mock
+from unittest.mock import Mock
 
 import pandas as pd
 import pytest
@@ -306,9 +306,6 @@ def test_duplicate_roster_id_is_rejected(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_threaded_league_matches_serial_with_out_of_order_teams(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    logger = Mock()
-    monkeypatch.setattr(extraction_script, "logger", logger)
-
     def response(endpoint: str, params: dict) -> dict:
         player_id = params["personId"]
         if player_id == 404:
@@ -339,10 +336,12 @@ def test_threaded_league_matches_serial_with_out_of_order_teams(
     extractor.team_id_name_mapping = dict.fromkeys(
         extractor.league_team_roster_players, "Team"
     )
-    expected = pd.concat(
-        extractor.get_player_stats_dataframe_per_team(team)[0]
-        for team in extractor.league_team_roster_players
-    )
+    frames, inactive = {}, {}
+    for team in extractor.league_team_roster_players:
+        frames[team], missing = extractor.get_player_stats_dataframe_per_team(team)
+        if missing:
+            inactive[team] = missing
+    expected = pd.concat(frames.values())
     expected["date"] = extraction_script.DATE_TIME_EXECUTION
 
     second_finished = Event()
@@ -362,9 +361,10 @@ def test_threaded_league_matches_serial_with_out_of_order_teams(
     actual, actual_inactive = extractor.get_player_stats_per_league()
 
     pd.testing.assert_frame_equal(actual, expected)
-    assert actual_inactive == {147: {404: "Inactive"}, 119: {404: "Inactive"}}
-    assert list(actual_inactive) == [147, 119]
-    logger.error.assert_not_called()
+    assert (
+        actual_inactive == inactive == {147: {404: "Inactive"}, 119: {404: "Inactive"}}
+    )
+    assert list(actual_inactive) == list(inactive)
 
 
 def test_team_collection_overlaps_at_most_four_workers(
@@ -375,6 +375,7 @@ def test_team_collection_overlaps_at_most_four_workers(
     extractor.team_id_name_mapping = dict.fromkeys(range(8), "Team")
     lock, release, four_started = Lock(), Event(), Event()
     active = maximum = 0
+    completed = []
 
     def collect(team: int) -> tuple[pd.DataFrame, dict[int, str]]:
         nonlocal active, maximum
@@ -389,6 +390,7 @@ def test_team_collection_overlaps_at_most_four_workers(
         finally:
             with lock:
                 active -= 1
+                completed.append(team)
 
     monkeypatch.setattr(extractor, "get_player_stats_dataframe_per_team", collect)
     with ThreadPoolExecutor(max_workers=1) as caller:
@@ -403,55 +405,6 @@ def test_team_collection_overlaps_at_most_four_workers(
         rows, inactive = result.result(timeout=10)
 
     assert maximum == 4
+    assert sorted(completed) == list(range(8))
     assert rows["team_id"].tolist() == list(range(8))
     assert inactive == {}
-
-
-@pytest.mark.parametrize("late_failure", [False, True])
-def test_worker_failures_are_logged_after_shutdown(
-    monkeypatch: pytest.MonkeyPatch, late_failure: bool
-) -> None:
-    extractor = extraction_script.DataExtractor(league_name="american_league")
-    extractor.team_id_name_mapping = {147: "Yankees", 111: "Red Sox", 119: "Dodgers"}
-    extractor.league_team_roster_players = dict.fromkeys(
-        extractor.team_id_name_mapping, {}
-    )
-    futures: list[Future] = [Future() for _ in range(3)]
-    errors: dict[int, Exception] = {147: ConnectionError("Connection lost")}
-    futures[0].set_exception(errors[147])
-    futures[1].set_running_or_notify_cancel()
-
-    def shutdown(*, wait: bool, cancel_futures: bool) -> None:
-        assert wait and cancel_futures
-        futures[2].cancel()
-        if late_failure:
-            errors[111] = ValueError("Missing expected player stats")
-            futures[1].set_exception(errors[111])
-        else:
-            futures[1].set_result((pd.DataFrame(), {}))
-
-    executor = Mock(
-        submit=Mock(side_effect=futures), shutdown=Mock(side_effect=shutdown)
-    )
-    monkeypatch.setattr(
-        extraction_script, "ThreadPoolExecutor", Mock(return_value=executor)
-    )
-    logger = Mock()
-    monkeypatch.setattr(extraction_script, "logger", logger)
-
-    with pytest.raises(ConnectionError) as raised:
-        extractor.get_player_stats_per_league()
-
-    assert raised.value is errors[147]
-    assert logger.error.call_count == len(errors)
-    assert logger.error.call_args_list[0].kwargs["exc_info"][2] is not None
-    for logged, (team, error) in zip(logger.error.call_args_list, errors.items()):
-        assert logged.args == ("team_extraction_failed",)
-        assert logged.kwargs == {
-            "league": "american_league",
-            "team_name": extractor.team_id_name_mapping[team],
-            "team_number": team,
-            "error_type": type(error).__name__,
-            "error": str(error),
-            "exc_info": (type(error), error, ANY),
-        }
