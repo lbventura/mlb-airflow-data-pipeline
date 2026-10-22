@@ -1,5 +1,7 @@
+from concurrent.futures import Future, ThreadPoolExecutor
 from itertools import permutations
-from unittest.mock import Mock
+from threading import Event, Lock
+from unittest.mock import ANY, Mock
 
 import pandas as pd
 import pytest
@@ -299,3 +301,157 @@ def test_duplicate_roster_id_is_rejected(monkeypatch: pytest.MonkeyPatch) -> Non
 
     with pytest.raises(ValueError, match="Duplicate player ID 101 in team 147 roster"):
         _get_team_roster_players(147)
+
+
+def test_threaded_league_matches_serial_with_out_of_order_teams(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    logger = Mock()
+    monkeypatch.setattr(extraction_script, "logger", logger)
+
+    def response(endpoint: str, params: dict) -> dict:
+        player_id = params["personId"]
+        if player_id == 404:
+            return {"people": [{}]}
+        group = "pitching" if player_id == 202 else "hitting"
+        names = PITCHING_STATS if group == "pitching" else BATTING_STATS
+        return {
+            "people": [
+                {
+                    "stats": [
+                        {
+                            "group": {"displayName": group},
+                            "splits": [{"stat": dict.fromkeys(names, player_id)}],
+                        }
+                    ]
+                }
+            ]
+        }
+
+    monkeypatch.setattr(statsapi, "get", response)
+    extractor = extraction_script.DataExtractor()
+    extractor.league_team_roster_players = {
+        147: {101: "Same Name", 202: "Pitcher", 404: "Inactive"},
+        111: {303: "Same Name"},
+        133: {},
+        119: {404: "Inactive"},
+    }
+    extractor.team_id_name_mapping = dict.fromkeys(
+        extractor.league_team_roster_players, "Team"
+    )
+    expected = pd.concat(
+        extractor.get_player_stats_dataframe_per_team(team)[0]
+        for team in extractor.league_team_roster_players
+    )
+    expected["date"] = extraction_script.DATE_TIME_EXECUTION
+
+    second_finished = Event()
+    get_team = extractor.get_player_stats_dataframe_per_team
+
+    def reordered_team(team: int) -> tuple[pd.DataFrame, dict[int, str]]:
+        if team == 147:
+            assert second_finished.wait(10)
+        result = get_team(team)
+        if team == 111:
+            second_finished.set()
+        return result
+
+    monkeypatch.setattr(
+        extractor, "get_player_stats_dataframe_per_team", reordered_team
+    )
+    actual, actual_inactive = extractor.get_player_stats_per_league()
+
+    pd.testing.assert_frame_equal(actual, expected)
+    assert actual_inactive == {147: {404: "Inactive"}, 119: {404: "Inactive"}}
+    assert list(actual_inactive) == [147, 119]
+    logger.error.assert_not_called()
+
+
+def test_team_collection_overlaps_at_most_four_workers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    extractor = extraction_script.DataExtractor()
+    extractor.league_team_roster_players = {team: {} for team in range(8)}
+    extractor.team_id_name_mapping = dict.fromkeys(range(8), "Team")
+    lock, release, four_started = Lock(), Event(), Event()
+    active = maximum = 0
+
+    def collect(team: int) -> tuple[pd.DataFrame, dict[int, str]]:
+        nonlocal active, maximum
+        with lock:
+            active += 1
+            maximum = max(maximum, active)
+            if active == 4:
+                four_started.set()
+        try:
+            assert release.wait(10)
+            return pd.DataFrame({"team_id": [team]}), {}
+        finally:
+            with lock:
+                active -= 1
+
+    monkeypatch.setattr(extractor, "get_player_stats_dataframe_per_team", collect)
+    with ThreadPoolExecutor(max_workers=1) as caller:
+        result = caller.submit(extractor.get_player_stats_per_league)
+        try:
+            assert four_started.wait(10)
+            with lock:
+                assert active == maximum == 4
+            assert not result.done()
+        finally:
+            release.set()
+        rows, inactive = result.result(timeout=10)
+
+    assert maximum == 4
+    assert rows["team_id"].tolist() == list(range(8))
+    assert inactive == {}
+
+
+@pytest.mark.parametrize("late_failure", [False, True])
+def test_worker_failures_are_logged_after_shutdown(
+    monkeypatch: pytest.MonkeyPatch, late_failure: bool
+) -> None:
+    extractor = extraction_script.DataExtractor(league_name="american_league")
+    extractor.team_id_name_mapping = {147: "Yankees", 111: "Red Sox", 119: "Dodgers"}
+    extractor.league_team_roster_players = dict.fromkeys(
+        extractor.team_id_name_mapping, {}
+    )
+    futures: list[Future] = [Future() for _ in range(3)]
+    errors: dict[int, Exception] = {147: ConnectionError("Connection lost")}
+    futures[0].set_exception(errors[147])
+    futures[1].set_running_or_notify_cancel()
+
+    def shutdown(*, wait: bool, cancel_futures: bool) -> None:
+        assert wait and cancel_futures
+        futures[2].cancel()
+        if late_failure:
+            errors[111] = ValueError("Missing expected player stats")
+            futures[1].set_exception(errors[111])
+        else:
+            futures[1].set_result((pd.DataFrame(), {}))
+
+    executor = Mock(
+        submit=Mock(side_effect=futures), shutdown=Mock(side_effect=shutdown)
+    )
+    monkeypatch.setattr(
+        extraction_script, "ThreadPoolExecutor", Mock(return_value=executor)
+    )
+    logger = Mock()
+    monkeypatch.setattr(extraction_script, "logger", logger)
+
+    with pytest.raises(ConnectionError) as raised:
+        extractor.get_player_stats_per_league()
+
+    assert raised.value is errors[147]
+    assert logger.error.call_count == len(errors)
+    assert logger.error.call_args_list[0].kwargs["exc_info"][2] is not None
+    for logged, (team, error) in zip(logger.error.call_args_list, errors.items()):
+        assert logged.args == ("team_extraction_failed",)
+        assert logged.kwargs == {
+            "league": "american_league",
+            "team_name": extractor.team_id_name_mapping[team],
+            "team_number": team,
+            "error_type": type(error).__name__,
+            "error": str(error),
+            "exc_info": (type(error), error, ANY),
+        }
