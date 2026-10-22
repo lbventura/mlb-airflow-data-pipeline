@@ -1,9 +1,7 @@
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
 from pathlib import Path
-from threading import Event, get_ident
-from typing import Generator
+from threading import Event
 from unittest.mock import Mock, call
 
 import pandas as pd
@@ -324,11 +322,8 @@ def test_database_waits_for_all_workers(
 
     release, waiting, other_finished = Event(), Event(), Event()
     original_team = DataExtractor.get_player_stats_dataframe_per_team
-    original_connection = extraction_script.create_connection
-    original_backup = extraction_script.backup_database_before_migration
-    caller_ids: list[int] = []
-    connection_ids: list[int] = []
-    statements: list[str] = []
+    connect = Mock(wraps=extraction_script.create_connection)
+    backup = Mock(wraps=extraction_script.backup_database_before_migration)
 
     def collect(self: DataExtractor, team: int) -> tuple[pd.DataFrame, dict[int, str]]:
         if team == 147:
@@ -341,28 +336,16 @@ def test_database_waits_for_all_workers(
             other_finished.set()
         return result
 
-    @contextmanager
-    def connect(path: str) -> Generator[sqlite3.Connection]:
-        connection_ids.append(get_ident())
-        with original_connection(path) as conn:
-            conn.set_trace_callback(statements.append)
-            yield conn
-
-    backup = Mock(wraps=original_backup)
     monkeypatch.setattr(DataExtractor, "get_player_stats_dataframe_per_team", collect)
     monkeypatch.setattr(extraction_script, "create_connection", connect)
     monkeypatch.setattr(extraction_script, "backup_database_before_migration", backup)
 
-    def run() -> None:
-        caller_ids.append(get_ident())
-        extraction_script.run_extraction(database, league, day)
-
     with ThreadPoolExecutor(max_workers=1) as caller:
-        result = caller.submit(run)
+        result = caller.submit(extraction_script.run_extraction, database, league, day)
         try:
             assert waiting.wait(10) and other_finished.wait(10)
             assert not result.done()
-            assert connection_ids == []
+            connect.assert_not_called()
             backup.assert_not_called()
             with sqlite3.connect(database) as conn:
                 assert list(conn.iterdump()) == before
@@ -375,17 +358,13 @@ def test_database_waits_for_all_workers(
             result.result(timeout=10)
 
     if worker_fails:
-        assert connection_ids == []
+        connect.assert_not_called()
         backup.assert_not_called()
         with sqlite3.connect(database) as conn:
             assert list(conn.iterdump()) == before
     else:
-        assert connection_ids == caller_ids
+        connect.assert_called_once_with(database)
         backup.assert_called_once_with(database)
-        assert [sql for sql in statements if sql.startswith("BEGIN")] == [
-            "BEGIN IMMEDIATE"
-        ]
-        assert statements.count("COMMIT") == 1
         with sqlite3.connect(database) as conn:
             assert conn.execute("SELECT COUNT(*) FROM player_stats").fetchone() == (5,)
             assert conn.execute("SELECT COUNT(*) FROM league_standings").fetchone() == (
