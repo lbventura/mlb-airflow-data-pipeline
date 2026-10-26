@@ -9,7 +9,7 @@ requires-python = "==3.14.7"
 dependencies = [
     "matplotlib==3.11.2",
     "numpy==2.5.4",
-    "pandas==3.0.6",
+    "pandas==3.1.0",
     "pytest==9.1.1",
     "MLB-StatsAPI==1.9.0",
     "apache-airflow==3.3.2",
