@@ -50,11 +50,11 @@ database is the starting point, so daily snapshots accumulate until the PR is me
 creates the branch again from current `main`. Local extraction defaults are
 unchanged. Season selection remains in `statsapi_parameters_script.py`.
 
-If extraction fails, the published database is unchanged. Rerunning on the same UTC date replaces that day's snapshots. If a branch push succeeded but PR creation failed, the next run resumes the unpublished branch. A PR closed without merging blocks collection while its branch exists. 
+If extraction fails, the published database is unchanged. Rerunning on the same UTC date replaces that day's snapshots. If a branch push succeeded but PR creation failed, the next run resumes the unpublished branch. A PR closed without merging blocks collection while its branch exists.
 If that branch was deleted, the next run starts a new collection from `main`. If a merged PR's branch still exists,
-inspect it for unmerged data before deleting it and rerunning. 
+inspect it for unmerged data before deleting it and rerunning.
 
-The workflow never force-pushes or automatically resolves database conflicts. 
+The workflow never force-pushes or automatically resolves database conflicts.
 Code changes on `main` reach an open collection branch only when you
 update it or begin the next collection cycle.
 
