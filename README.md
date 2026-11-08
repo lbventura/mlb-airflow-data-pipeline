@@ -17,7 +17,7 @@ Use Linux or macOS, install [Micromamba](https://mamba.readthedocs.io/en/latest/
 
 ```sh
 micromamba create -n mlb-airflow-env python=3.14.7
-micromamba install -n mlb-airflow-env -c conda-forge apache-airflow google-re2
+micromamba install -n mlb-airflow-env -c conda-forge apache-airflow
 micromamba run -n mlb-airflow-env python -m pip install -e .
 ```
 
@@ -36,6 +36,23 @@ micromamba run -n mlb-airflow-env pre-commit run --all-files
 ```
 
 Pytest excludes tests marked `manual` by default; see `pytest.ini`.
+
+## Dependency updates
+
+[Dependabot](.github/dependabot.yml) checks pip packages, GitHub Actions, and
+remote pre-commit hooks weekly on Mondays at 09:00 Europe/Berlin. Pip minor and
+patch updates are grouped; major updates are proposed separately for review.
+The schedule takes effect once the configuration is merged into `main`.
+
+Project dependencies remain in `pyproject.toml` and are installed with pip
+inside the Micromamba environment. Ruff and mypy versions are maintained in
+`.pre-commit-config.yaml`, so their updates use the pre-commit ecosystem.
+
+Python version changes remain manual: update `requires-python`, both workflow
+environment setups, the mypy hook interpreter, and the setup instructions
+together. The initial Conda installation of Airflow is not tracked by Dependabot
+because this repository has no Conda environment manifest. The final Airflow
+version installed by pip is tracked through `pyproject.toml`.
 
 ## Scheduled database updates
 

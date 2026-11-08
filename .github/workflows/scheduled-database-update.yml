@@ -86,7 +86,6 @@ jobs:
           create-args: >-
             python=3.14.7
             apache-airflow
-            google-re2
           init-shell: bash
 
       - name: Install the project
