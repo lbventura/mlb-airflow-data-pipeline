@@ -80,7 +80,7 @@ jobs:
           fi
           echo "branch_sha=$branch_sha" >> "$GITHUB_OUTPUT"
 
-      - uses: mamba-org/setup-micromamba@v2
+      - uses: mamba-org/setup-micromamba@v3
         with:
           environment-name: mlb-airflow-env
           create-args: >-
