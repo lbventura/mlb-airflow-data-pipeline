@@ -12,7 +12,7 @@ dependencies = [
     "pandas==3.1.1",
     "pytest==9.2.0",
     "MLB-StatsAPI==1.9.0",
-    "apache-airflow==3.3.2",
+    "apache-airflow==3.4.0",
     "structlog>=26.1.0",
 ]
 
